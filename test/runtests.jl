@@ -68,18 +68,30 @@ end
 end
 
 @testset "character set [" begin
-    f = Scanf.Format("%10[abc]")
+    f = Scanf.Format("%10[a-c]")
     res = "abbbcbbcbadabbdbbabbbann"
     b = codeunits(res)
     ra = Ref{String}()
     @test Scanf.format(b, 1, f, ra) == 11 && ra[] == res[1:10]
 end
+
 @testset "character set ^" begin
-    f = Scanf.Format("%10[^A]")
+    f = Scanf.Format("%10[^A-]")
     res = "abbbcb Abadabbdbbabbbann"
     b = codeunits(res)
     ra = Ref{String}()
     @test Scanf.format(b, 1, f, ra) == 8 && ra[] == res[1:7]
+end
+
+@testset "single characters" begin
+    rc = Ref{Char}()
+    r = @sscanf("abX", "ab%c", rc)
+    @test rc[] == 'X'
+end
+@testset "multiple characters" begin
+    rc = Vector{Char}(undef, 3)
+    r = @sscanf("abXYZ", "ab%3c", rc)
+    @test rc == ['X', 'Y', 'Z']
 end
 
 #=

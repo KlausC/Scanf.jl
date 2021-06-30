@@ -35,9 +35,8 @@ argument, though.
 
 + for type specifier `%c`, without `width` specified, the corresponding argument must have type `Ref{Char}`.
 
-+ for type specifier `%Nc`, with a width field `N`, the argument must have type `Ref{Vector{Char}}`.
-  If the refernece object contains a vector (is not undefined), this vector is re-used, otherwise a vector is created. 
-  The output vector is resized to the number of characters actually read.
++ for type specifier `%Nc`, with a width field `N`, the argument must have type `Vector{Char}`.
+  This vector is re-used and resized to the number of characters actually read.
 
 + the type specifier `n`, returns an integer value, which is the byte offset in the input data, consumed so far.
 

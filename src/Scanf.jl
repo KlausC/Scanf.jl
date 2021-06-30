@@ -322,14 +322,31 @@ end
 # single character
 @inline function fmt(buf, pos, arg, j, spec::Spec{T}) where {T <: Chars}
     noassign, width = spec.noassign, spec.width
+    width = ifelse(width == 0, 1, width)
     len = length(buf)
     pos > len && throw(ArgumentError("no complete input character"))
-    b = buf[pos]
-    n = _ncodeunits(b)
-    n > 1 && pos + n - 1 > len && throw(ArgumentError("no complete input character"))
-    r = _next_char(buf, pos)
-    !noassign && ( arg[] = r )
-    return pos + n, j + !noassign
+    i = 0
+    while pos <= len && i < width
+        b = buf[pos]
+        n = _ncodeunits(b)
+        n > 1 && pos + n - 1 > len && throw(ArgumentError("no complete input character"))
+        r = _next_char(buf, pos)
+        if !noassign
+            i += 1
+            assignto!(arg, i, r)
+        end
+        pos += n
+    end
+    !noassign && arg isa AbstractVector && resize!(arg, i)
+    return pos, j + !noassign
+end
+
+assignto!(arg::Ref, i, r) = arg[] = if i == 1; arg[] = r end
+function assignto!(arg::AbstractVector, i, r)
+    if i > length(arg)
+        resize!(arg, width)
+    end
+    arg[i] = r
 end
 
 # strings
@@ -589,12 +606,12 @@ Return the number of assigned arguments.
 """
 function format end
 
-function format(str::String, f::Scanf.Format, args::Ref...)
+function format(str::String, f::Scanf.Format, args::Union{Ref,AbstractVector}...)
     b = codeunits(str)
     format(b, 1, f, args...)
 end
 
-function format(io::IO, f::Format, args::Ref...)
+function format(io::IO, f::Format, args::Union{Ref,AbstractVector}...)
     str = read(io, String)
     # TODO support reading line by line
     format(str, f, args...)
