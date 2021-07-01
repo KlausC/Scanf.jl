@@ -66,6 +66,12 @@ end
     end
 end
 
+@testset "convert integer to other type" begin
+    f = Scanf.format"%i"
+    rx = Ref{String}()
+    @test_throws MethodError Scanf.format("14", f, rx)
+end
+
 # character sets
 @testset "character set [" begin
     f1 = Scanf.Format("%10[a-c]")
