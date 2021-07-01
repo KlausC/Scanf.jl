@@ -31,6 +31,7 @@ const IntBases = Val{'i'}
 const PositionCounter = Val{'n'}
 const Whitespace = Val{Char(SKIP)}
 const CharSets = Union{Val{Char(CSOPEN)}, Val{Char(CSNEG)}}
+const EscapeChar = Val{Char(ESC)}
 
 abstract type AbstractSpec end
 
@@ -70,17 +71,9 @@ function make_spec(T, noassign, width, cs)
     end
 end
 
-function make_charset(cs::AbstractVector{UInt8})
-    n = length(cs)    
-    str = String(cs)
-    if CSMINUS in cs
-        splitted_charset(str)
-    else
-        str
-    end
-end
+make_charset(cs::AbstractVector{UInt8}) = make_charset(String(cs))
 
-function splitted_charset(cs::String)
+function make_charset(cs::String)
     M = Char(CSMINUS)
     ch = String[]
     ra = Any[]
@@ -153,13 +146,7 @@ function Format(f::AbstractString)
         pos += 1
         if b == ESC
             pos > len && throw(ArgumentError("invalid format string: '$f'"))
-            if bytes[pos] == ESC
-                # escaped '%'
-                b = ESC
-                pos += 1
-            else
-                break
-            end
+            break
         elseif b in WHITESPACE
             b = SKIP
             break
@@ -176,18 +163,14 @@ function Format(f::AbstractString)
             pos += 1
             # positioned at start of first format str %
             # parse flags
-            while true
-                if b == NOASSIGN
-                    noassign = true
-                else
-                    break
-                end
+            if b == NOASSIGN
+                noassign = true
                 pos > len && throw(ArgumentError("incomplete format string: '$f'"))
                 b = bytes[pos]
                 pos += 1
             end
             # parse width
-            while b - UInt8('0') < 0x0a
+            while 0x00 <= b - UInt8('0') < 0x0a
                 width = 10 * width + (b - UInt8('0'))
                 b = bytes[pos]
                 pos += 1
@@ -214,7 +197,7 @@ function Format(f::AbstractString)
                 txt = "["
                 start = pos
                 xpos = findnext(isequal(CSCLOSE), bytes, start)
-                if bytes[start] == CSNEG
+                if start <= len && bytes[start] == CSNEG
                     b = CSNEG
                     txt = "[^"
                     start += 1
@@ -223,17 +206,17 @@ function Format(f::AbstractString)
                 if bytes[start] == CSCLOSE # first character after "[" or "[^"
                     xpos = findnext(isequal(CSCLOSE), bytes, start+1)
                 end
-                if xpos === nothing || start >= xpos
-                    throw(ArgumentError("invalid format string '$f', after '$txt]' a CHAR(CSCLOSE) is missing"))
-                end
+                (xpos === nothing || start >= xpos ) &&  throw(ArgumentError("invalid format string '$f', after '$txt]' a CHAR(CSCLOSE) is missing"))
                 charset = view(bytes, start:xpos-1)   
                 pos = xpos + 1
+            elseif b == ESC
+                noassign = true
             else
                  throw(ArgumentError("invalid format string: '$f', invalid type specifier: '$(Char(b))'"))
             end
             type = Val{Char(b)}
-        else
-            type = Val{Char(b)}
+        else # format contains a WS character
+            type = Whitespace
             noassign=true
         end
         push!(fmts, make_spec(type, noassign, width, charset))
@@ -243,13 +226,7 @@ function Format(f::AbstractString)
             pos += 1
             if b == ESC
                 pos > len && throw(ArgumentError("invalid format string: '$f'"))
-                if bytes[pos] == ESC
-                    # escaped '%'
-                    b = bytes[pos]
-                    pos += 1
-                else
-                    break
-                end
+                break
             elseif b in WHITESPACE
                 b = SKIP
                 break
@@ -263,7 +240,13 @@ end
 Format(f::Format) = f
 
 macro format_str(str)
-    Format(str)
+    str = unescape_string(str)
+    esc(:(Scanf.Format($str)))
+end
+
+import Base: ==
+function ==(f::T, g::T) where T<:Format
+    f.substringranges == g.substringranges && f.formats == g.formats
 end
 
 # length of utf8 encoding of character starting with this byte
@@ -289,8 +272,14 @@ function _next_char(buf, pos)
     return reinterpret(Char, c)
 end
 
+# match escape character
+@inline function fmt(buf, pos, arg, j, spec::Spec{EscapeChar})
+    len = length(buf)
+    return pos + (pos <= len && buf[pos] == ESC), j
+end
+
 # skip whitespace
-@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where {T <: Whitespace}
+@inline function fmt(buf, pos, arg, j, spec::Spec{Whitespace})
     skip_ws(buf, pos)[1], j
 end
 
@@ -344,7 +333,7 @@ end
 assignto!(arg::Ref, i, r) = arg[] = if i == 1; arg[] = r end
 function assignto!(arg::AbstractVector, i, r)
     if i > length(arg)
-        resize!(arg, width)
+        resize!(arg, i)
     end
     arg[i] = r
 end
@@ -369,8 +358,10 @@ end
         pos += n
         l += 1
     end
-    r = String(view(buf, start:pos-1))
-    !noassign && ( arg[] = r )
+    if !noassign
+        r = String(view(buf, start:pos-1))
+        arg[] = r
+    end
     return pos, j + !noassign
 end
 
@@ -519,7 +510,9 @@ end
 # position counters
 function fmt(buf, pos, arg::Ref{<:Integer}, j, spec::Spec{PositionCounter})
     noassign = spec.noassign
-    arg[] = pos - 1
+    if !noassign
+        arg[] = pos - 1
+    end
     pos, j + !noassign
 end
 
@@ -527,8 +520,6 @@ end
 @inline check_set(c::Char, spec::CharsetSpec{Val{Char(CSNEG)}}) = check_!in(c, spec.set)
 @inline check_in(c, set::AbstractString) = occursin(c, set)
 @inline check_!in(c, set::AbstractString) = !occursin(c, set)
-@inline check_in(c, set::Union{AbstractVector,AbstractRange}) = in(c, set)
-@inline check_!in(c, set::Union{AbstractVector,AbstractRange}) = !in(c, set)
 @inline check_in(c, set::UnitRange) = in(UInt32(c), set)
 @inline check_!in(c, set::UnitRange) = !in(UInt32(c), set)
 @inline check_in(c, set::Tuple) = any(x->check_in(c, x), set)
@@ -564,7 +555,7 @@ const UNROLL_UPTO = 8
     fstr = f.str
     sr = f.substringranges[1]
     newpos = pos + length(sr) - 1
-    (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos
+    (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos, 0
     pos = newpos + 1
 
     # for each format, scan arg and next substring
@@ -576,7 +567,7 @@ const UNROLL_UPTO = 8
             pos, j = fmt(buf, pos, args[j], j, f.formats[i])
             sr = f.substringranges[i + 1]
             newpos = pos + length(sr) - 1
-            (newpos > len || fstr[sr] != view(buf, pos:newpos)) && return pos
+            (newpos > len || fstr[sr] != view(buf, pos:newpos)) && return pos, j - 1
             pos = newpos + 1
         end
     end
@@ -585,11 +576,11 @@ const UNROLL_UPTO = 8
             pos, j = fmt(buf, pos, args[j], j, f.formats[i])
             sr = f.substringranges[i + 1]
             newpos = pos + length(sr) - 1
-            (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos
+            (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos, j - 1
             pos = newpos + 1
         end
     end
-    return pos
+    return pos, j - 1
 end
 
 @noinline argmismatch(a, b) =
@@ -608,14 +599,13 @@ function format end
 
 function format(str::String, f::Scanf.Format, args::Union{Ref,AbstractVector}...)
     b = codeunits(str)
-    format(b, 1, f, args...)
+    format(b, 1, f, args...)[2]
 end
 
 function format(io::IO, f::Format, args::Union{Ref,AbstractVector}...)
     str = read(io, String)
     # TODO support reading line by line
-    format(str, f, args...)
-    return
+    format(str, f, args...)[2]
 end
 
 """
