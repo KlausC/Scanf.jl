@@ -68,19 +68,33 @@ end
 
 # character sets
 @testset "character set [" begin
-    f = Scanf.Format("%10[a-c]")
+    f1 = Scanf.Format("%10[a-c]")
+    f2 = Scanf.Format("%10[abc]")
+    f3 = Scanf.Format("%10[abcx-y]")
     res = "abbbcbbcbadabbdbbabbbann"
     b = codeunits(res)
     ra = Ref{String}()
-    @test Scanf.format(b, 1, f, ra) == (11, 1) && ra[] == res[1:10]
+    @test Scanf.format(b, 1, f1, ra) == (11, 1) && ra[] == res[1:10]
+    @test Scanf.format(b, 1, f2, ra) == (11, 1) && ra[] == res[1:10]
+    @test Scanf.format(b, 1, f3, ra) == (11, 1) && ra[] == res[1:10]
 end
 
 @testset "character set ^" begin
-    f = Scanf.Format("%10[^A-A]")
+    f1 = Scanf.Format("%10[^A-A]")
+    f2 = Scanf.Format("%10[^A-B]")
+    f3 = Scanf.Format("%10[^A-BX]")
     res = "abbbcb Abadabbdbbabbbann"
     b = codeunits(res)
     ra = Ref{String}()
-    @test Scanf.format(b, 1, f, ra) == (8, 1) && ra[] == res[1:7]
+    @test Scanf.format(b, 1, f1, ra) == (8, 1) && ra[] == res[1:7]
+    @test Scanf.format(b, 1, f2, ra) == (8, 1) && ra[] == res[1:7]
+    @test Scanf.format(b, 1, f3, ra) == (8, 1) && ra[] == res[1:7]
+end
+
+@testset "many arguments" begin
+    r = Ref{Int}.(zeros(10))
+    f = Scanf.Format("%d%d%d%d%d%d%d%d%d%d ")
+    @test Scanf.format("1 2 3 4 5 6 7 8 9 10", f, r...) == 10
 end
 
 @testset "single characters" begin
@@ -132,9 +146,10 @@ end
     @test_throws ArgumentError Scanf.Format("%[]")
     @test_throws ArgumentError Scanf.Format("%[^]")
     @test Scanf.Format("%[A-A]").formats[1].set == "A"
-    f = Scanf.Format("%d")
+    f = Scanf.Format("%d ")
     @test Scanf.Format(f) === f
-    @test Scanf.format"%d" == f
+    @test Scanf.format"%d " == f
+    @test_throws ArgumentError Scanf.format("", f)
 end
 
 @testset "%n" begin
@@ -144,6 +159,11 @@ end
     @test (@sscanf("1234", "%3d4%n", ri, x); x[] == 4)
     @test (@sscanf("😉", "%s%n", rs, x); x[] == 4)
     @test (@sscanf("1234 ", "%s%n", rs, x); x[] == 4)
+end
+
+@testset "show specifiers" begin
+    f = Scanf.format"%d%[abc]%[^abc] "
+    @test sprint(show, f.formats) == "(%d, %[abc], %[^abc], %*_)"
 end
 
 end # @testset "Scanf"

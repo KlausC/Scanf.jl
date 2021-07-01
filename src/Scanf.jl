@@ -54,13 +54,13 @@ struct CharsetSpec{T,S} <: AbstractSpec
 end
 
 # recreate the format specifier string from a typed Spec
-Base.string(f::Spec{T}; modifier::String="") where {T} =
-    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, char(T))
+Base.string(f::Spec{Val{T}}; modifier::String="") where {T} =
+    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, T)
 Base.string(f::CharsetSpec{Val{Char(CSOPEN)}}; modifier::String="") =
-    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, CHAR(CSOPEN), f.set..., Char(CSCLOSE))
+    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), f.set..., Char(CSCLOSE))
 Base.string(f::CharsetSpec{Val{Char(CSNEG)}}; modifier::String="") =
-    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, CHAR(CSOPEN), Char(CSNEG), f.set..., CHAR(CSCLOSE))
-Base.show(io::IO, f::Spec) = print(io, string(f))
+    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), Char(CSNEG), f.set..., Char(CSCLOSE))
+Base.show(io::IO, f::AbstractSpec) = print(io, string(f))
 
 function make_spec(T, noassign, width, cs)
     if cs === nothing || isempty(cs)
@@ -130,10 +130,6 @@ struct Format{S, T}
     formats::T # Tuple of Specs
 end
 
-# what number base should be used for a given format specifier?
-#base(T) = T <: HexBases ? 16 : T <: Val{'o'} ? 8 : 10
-char(::Type{Val{c}}) where {c} = c
-
 # parse format string
 function Format(f::AbstractString)
     isempty(f) && throw(ArgumentError("empty format string"))
@@ -154,7 +150,7 @@ function Format(f::AbstractString)
     end
     strs = [1:pos - 1 - (b == ESC || b == SKIP)]
     fmts = []
-    while pos <= len
+    while pos <= len || b == SKIP
         noassign = false
         width = 0
         charset = nothing
@@ -202,11 +198,11 @@ function Format(f::AbstractString)
                     txt = "[^"
                     start += 1
                 end
-                xpos === nothing && throw(ArgumentError("invalid format string '$f', after '$txt' a CHAR(CSCLOSE) is missing"))
+                xpos === nothing && throw(ArgumentError("invalid format string '$f', after '$txt' a Char(CSCLOSE) is missing"))
                 if bytes[start] == CSCLOSE # first character after "[" or "[^"
                     xpos = findnext(isequal(CSCLOSE), bytes, start+1)
                 end
-                (xpos === nothing || start >= xpos ) &&  throw(ArgumentError("invalid format string '$f', after '$txt]' a CHAR(CSCLOSE) is missing"))
+                (xpos === nothing || start >= xpos ) &&  throw(ArgumentError("invalid format string '$f', after '$txt]' a Char(CSCLOSE) is missing"))
                 charset = view(bytes, start:xpos-1)   
                 pos = xpos + 1
             elseif b == ESC
@@ -221,6 +217,7 @@ function Format(f::AbstractString)
         end
         push!(fmts, make_spec(type, noassign, width, charset))
         start = pos
+        b = 0x00
         while pos <= len
             b = bytes[pos]
             pos += 1
@@ -322,7 +319,7 @@ end
         r = _next_char(buf, pos)
         if !noassign
             i += 1
-            assignto!(arg, i, r)
+            assignto!(arg[j], r, i)
         end
         pos += n
     end
@@ -330,8 +327,8 @@ end
     return pos, j + !noassign
 end
 
-assignto!(arg::Ref, i, r) = arg[] = if i == 1; arg[] = r end
-function assignto!(arg::AbstractVector, i, r)
+assignto!(arg::Ref, r, i=1) = arg[] = if i == 1; arg[] = r end
+function assignto!(arg::AbstractVector, r, i=1)
     if i > length(arg)
         resize!(arg, i)
     end
@@ -360,7 +357,7 @@ end
     end
     if !noassign
         r = String(view(buf, start:pos-1))
-        arg[] = r
+        assignto!(arg[j], r)
     end
     return pos, j + !noassign
 end
@@ -383,20 +380,21 @@ inttype(::Type{<:Ptr}) = UInt
 inttype(::Type) = Int
 
 # integer types
-@inline function fmt(buf, pos, arg::Ref{A}, j, spec::Spec{T}) where {T <: Ints, A}
+@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T <: Ints
     pos, len = skip_ws(buf, pos)
     noassign, width = spec.noassign, spec.width
     if width > 0 && pos + width - 1 < len
         len = pos + width - 1
     end
     start = pos
+    sig = false
     pos > len && return pos, j
     b = buf[pos]
     negate = false
     if b in b"+-"
         pos += 1
         negate = b == UInt('-')
-        start += A <: Unsigned
+        sig = true
     end
     digits = DECIMAL
     base, digits = basespec(T)
@@ -424,19 +422,20 @@ inttype(::Type) = Int
         end
     end
     if !noassign
+        S = inttype(eltype(arg[j]))
+        start += sig && S <: Unsigned
         r = String(view(buf, start:pos-1))
-        B = inttype(A)
-        i = parse(B, r, base=base)
-        if B <: Unsigned && negate
-            i = -i
+        x = parse(S, r, base=base)
+        if S <: Unsigned && negate
+            x = -x
         end
-        arg[] = i
+        assignto!(arg[j], x)
     end
     pos, j + !noassign
 end
 
 # pointers
-@inline function fmt(buf, pos, arg::Ref{A}, j, spec::Spec{T}) where {T <: Pointer, A}
+@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T <: Pointer
     pos, len = skip_ws(buf, pos)
     noassign, width = spec.noassign, spec.width
     if width > 0 && pos + width - 1 < len
@@ -456,14 +455,14 @@ end
     end
     if !noassign
         r = String(view(buf, start:pos-1))
-        B = inttype(A)
-        arg[] = parse(B, r, base=base)
+        S = inttype(eltype(arg[j]))
+        assignto!(arg[j], parse(S, r, base=base))
     end
     pos, j + !noassign
 end
 
 # floating point types
-@inline function fmt(buf, pos, arg::Ref{A}, j, spec::Spec{T}) where {T <: Floats, A}
+@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T<:Floats
     pos, len = skip_ws(buf, pos)
     noassign, width = spec.noassign, spec.width
     if width > 0 && pos + width - 1 < len
@@ -502,16 +501,17 @@ end
     end
     if !noassign
         r = String(view(buf, start:pos-1))
-        arg[] = parse(float(A), r)
+        A = eltype(arg[j])
+        assignto!(arg[j], parse(float(A), r))
     end
     pos, j + !noassign
 end
 
 # position counters
-function fmt(buf, pos, arg::Ref{<:Integer}, j, spec::Spec{PositionCounter})
+function fmt(buf, pos, arg, j, spec::Spec{PositionCounter})
     noassign = spec.noassign
     if !noassign
-        arg[] = pos - 1
+        assignto!(arg[j], pos - 1)
     end
     pos, j + !noassign
 end
@@ -526,7 +526,7 @@ end
 @inline check_!in(c, set::Tuple) = all(x->check_!in(c, x), set)
 
 # charset types
-@inline function fmt(buf, pos, arg::Ref{A}, j, spec::CharsetSpec) where {A<:AbstractString}
+@inline function fmt(buf, pos, arg, j, spec::CharsetSpec)
     pos, len = skip_ws(buf, pos)
     noassign, width = spec.noassign, spec.width
     if width > 0 && pos + width - 1 < len
@@ -542,7 +542,7 @@ end
         pos += n
     end
     if !noassign
-        arg[] = String(view(buf, start:pos-1))
+        assignto!(arg[j], String(view(buf, start:pos-1)))
     end
     pos, j + !noassign
 end
@@ -552,6 +552,10 @@ const UNROLL_UPTO = 8
 @inline function format(buf::AbstractVector{UInt8}, pos::Integer, f::Format, args...)
     # skip first substring
     len = length(buf)
+    n = length(args)
+    m = countspecs(f)
+    n == m || argmismatch(m, n)
+
     fstr = f.str
     sr = f.substringranges[1]
     newpos = pos + length(sr) - 1
@@ -564,7 +568,7 @@ const UNROLL_UPTO = 8
     j = 1
     Base.@nexprs 8 i -> begin
         if N >= i
-            pos, j = fmt(buf, pos, args[j], j, f.formats[i])
+            pos, j = fmt(buf, pos, args, j, f.formats[i])
             sr = f.substringranges[i + 1]
             newpos = pos + length(sr) - 1
             (newpos > len || fstr[sr] != view(buf, pos:newpos)) && return pos, j - 1
@@ -573,7 +577,7 @@ const UNROLL_UPTO = 8
     end
     if N > UNROLL_UPTO
         for i = UNROLL_UPTO+1:N
-            pos, j = fmt(buf, pos, args[j], j, f.formats[i])
+            pos, j = fmt(buf, pos, args, j, f.formats[i])
             sr = f.substringranges[i + 1]
             newpos = pos + length(sr) - 1
             (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos, j - 1
@@ -585,6 +589,8 @@ end
 
 @noinline argmismatch(a, b) =
     throw(ArgumentError("mismatch between # of format specifiers and provided args: $a != $b"))
+
+countspecs(f::Format) = count(x-> !x.noassign, f.formats )
 
 """
     Scanf.format(b::String, f::Scanf.Format, args::Ref...) => Int
