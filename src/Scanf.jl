@@ -43,31 +43,31 @@ Typed representation of a format specifier.
 Fields are the various modifiers allowed for various format specifiers.
 """
 struct Spec{T} <: AbstractSpec # T => %type => Val{'type'}
-    noassign::Bool
+    assign::Bool
     width::Int
 end
 
 struct CharsetSpec{T,S} <: AbstractSpec
-    noassign::Bool
+    assign::Bool
     width::Int
     set::S
 end
 
 # recreate the format specifier string from a typed Spec
 Base.string(f::Spec{Val{T}}; modifier::String="") where {T} =
-    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, T)
+    string("%", !f.assign ? "*" : "", f.width > 0 ? f.width : "", modifier, T)
 Base.string(f::CharsetSpec{Val{Char(CSOPEN)}}; modifier::String="") =
-    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), f.set..., Char(CSCLOSE))
+    string("%", !f.assign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), f.set..., Char(CSCLOSE))
 Base.string(f::CharsetSpec{Val{Char(CSNEG)}}; modifier::String="") =
-    string("%", f.noassign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), Char(CSNEG), f.set..., Char(CSCLOSE))
+    string("%", !f.assign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), Char(CSNEG), f.set..., Char(CSCLOSE))
 Base.show(io::IO, f::AbstractSpec) = print(io, string(f))
 
-function make_spec(T, noassign, width, cs)
+function make_spec(T, assign, width, cs)
     if cs === nothing || isempty(cs)
-        Spec{T}(noassign, width)
+        Spec{T}(assign, width)
     else
         charset = make_charset(cs)
-        CharsetSpec{T,typeof(charset)}(noassign, width, charset)
+        CharsetSpec{T,typeof(charset)}(assign, width, charset)
     end
 end
 
@@ -151,7 +151,7 @@ function Format(f::AbstractString)
     strs = [1:pos - 1 - (b == ESC || b == SKIP)]
     fmts = []
     while pos <= len || b == SKIP
-        noassign = false
+        assign = true
         width = 0
         charset = nothing
         if b == ESC
@@ -160,7 +160,7 @@ function Format(f::AbstractString)
             # positioned at start of first format str %
             # parse flags
             if b == NOASSIGN
-                noassign = true
+                assign = false
                 pos > len && throw(ArgumentError("incomplete format string: '$f'"))
                 b = bytes[pos]
                 pos += 1
@@ -206,16 +206,16 @@ function Format(f::AbstractString)
                 charset = view(bytes, start:xpos-1)   
                 pos = xpos + 1
             elseif b == ESC
-                noassign = true
+                assign = false
             else
                  throw(ArgumentError("invalid format string: '$f', invalid type specifier: '$(Char(b))'"))
             end
             type = Val{Char(b)}
         else # format contains a WS character
             type = Whitespace
-            noassign=true
+            assign = false
         end
-        push!(fmts, make_spec(type, noassign, width, charset))
+        push!(fmts, make_spec(type, assign, width, charset))
         start = pos
         b = 0x00
         while pos <= len
@@ -307,7 +307,7 @@ end
 
 # single character
 @inline function fmt(buf, pos, arg, j, spec::Spec{T}) where {T <: Chars}
-    noassign, width = spec.noassign, spec.width
+    assign, width = spec.assign, spec.width
     width = ifelse(width == 0, 1, width)
     len = length(buf)
     pos > len && throw(ArgumentError("no complete input character"))
@@ -317,14 +317,14 @@ end
         n = _ncodeunits(b)
         n > 1 && pos + n - 1 > len && throw(ArgumentError("no complete input character"))
         r = _next_char(buf, pos)
-        if !noassign
+        if assign
             i += 1
             assignto!(arg[j], r, i)
         end
         pos += n
     end
-    !noassign && arg isa AbstractVector && resize!(arg, i)
-    return pos, j + !noassign
+    assign && arg isa AbstractVector && resize!(arg, i)
+    return pos, j + assign
 end
 
 assignto!(arg::Ref, r, i=1) = arg[] = if i == 1; arg[] = r end
@@ -338,7 +338,7 @@ end
 # strings
 @inline function fmt(buf, pos, arg, j, spec::Spec{T}) where {T <: Strings}
     pos, len = skip_ws(buf, pos)
-    noassign, width = spec.noassign, spec.width
+    assign, width = spec.assign, spec.width
     start = pos
     m = 0
     l = 0
@@ -355,11 +355,11 @@ end
         pos += n
         l += 1
     end
-    if !noassign
+    if assign
         r = String(view(buf, start:pos-1))
         assignto!(arg[j], r)
     end
-    return pos, j + !noassign
+    return pos, j + assign
 end
 
 const DECIMAL = b"0123456789"
@@ -382,7 +382,7 @@ inttype(::Type) = Int
 # integer types
 @inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T <: Ints
     pos, len = skip_ws(buf, pos)
-    noassign, width = spec.noassign, spec.width
+    assign, width = spec.assign, spec.width
     if width > 0 && pos + width - 1 < len
         len = pos + width - 1
     end
@@ -421,7 +421,7 @@ inttype(::Type) = Int
             break
         end
     end
-    if !noassign
+    if assign
         S = inttype(eltype(arg[j]))
         start += sig && S <: Unsigned
         r = String(view(buf, start:pos-1))
@@ -431,13 +431,13 @@ inttype(::Type) = Int
         end
         assignto!(arg[j], x)
     end
-    pos, j + !noassign
+    pos, j + assign
 end
 
 # pointers
 @inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T <: Pointer
     pos, len = skip_ws(buf, pos)
-    noassign, width = spec.noassign, spec.width
+    assign, width = spec.assign, spec.width
     if width > 0 && pos + width - 1 < len
         len = pos + width - 1
     end
@@ -453,18 +453,18 @@ end
             break
         end
     end
-    if !noassign
+    if assign
         r = String(view(buf, start:pos-1))
         S = inttype(eltype(arg[j]))
         assignto!(arg[j], parse(S, r, base=base))
     end
-    pos, j + !noassign
+    pos, j + assign
 end
 
 # floating point types
 @inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T<:Floats
     pos, len = skip_ws(buf, pos)
-    noassign, width = spec.noassign, spec.width
+    assign, width = spec.assign, spec.width
     if width > 0 && pos + width - 1 < len
         len = pos + width - 1
     end
@@ -499,21 +499,21 @@ end
         end
         pos += 1
     end
-    if !noassign
+    if assign
         r = String(view(buf, start:pos-1))
         A = eltype(arg[j])
         assignto!(arg[j], parse(float(A), r))
     end
-    pos, j + !noassign
+    pos, j + assign
 end
 
 # position counters
 function fmt(buf, pos, arg, j, spec::Spec{PositionCounter})
-    noassign = spec.noassign
-    if !noassign
+    assign = spec.assign
+    if assign
         assignto!(arg[j], pos - 1)
     end
-    pos, j + !noassign
+    pos, j + assign
 end
 
 @inline check_set(c::Char, spec::CharsetSpec{Val{Char(CSOPEN)}}) = check_in(c, spec.set)
@@ -528,7 +528,7 @@ end
 # charset types
 @inline function fmt(buf, pos, arg, j, spec::CharsetSpec)
     pos, len = skip_ws(buf, pos)
-    noassign, width = spec.noassign, spec.width
+    assign, width = spec.assign, spec.width
     if width > 0 && pos + width - 1 < len
         len = pos + width - 1
     end
@@ -541,10 +541,10 @@ end
         check_set(c, spec) || break
         pos += n
     end
-    if !noassign
+    if assign
         assignto!(arg[j], String(view(buf, start:pos-1)))
     end
-    pos, j + !noassign
+    pos, j + assign
 end
 
 const UNROLL_UPTO = 8
@@ -590,7 +590,7 @@ end
 @noinline argmismatch(a, b) =
     throw(ArgumentError("mismatch between # of format specifiers and provided args: $a != $b"))
 
-countspecs(f::Format) = count(x-> !x.noassign, f.formats )
+countspecs(f::Format) = count(x-> x.assign, f.formats )
 
 """
     Scanf.format(b::String, f::Scanf.Format, args::Ref...) => Int

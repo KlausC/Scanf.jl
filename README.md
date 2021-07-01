@@ -22,7 +22,7 @@ with some adaptations:
 
 + strings are not NUL-terminated, `\0` is a valid character in format string and input data.
 
-+ in format strings, whitespace specifiers are only characters in " \n\r\t\f\v".
++ in format strings, whitespace specifiers are only ASCII space characters " \n\r\t\f\v".
 
 + in input data, all characters `x` with `isspace(x) == true` are skipped by all whitespace specifiers in the format string.
 
