@@ -261,7 +261,7 @@ end
         end
     end
     j = pos - 1 - ( b == ESC || b == SKIP)
-    start <= j && push!(fmts, LiteralSpec(view(f, start:j)))
+    start <= j && push!(fmts, LiteralSpec(SubString(f, start:j)))
     return pos, b
 end
 
