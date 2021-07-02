@@ -15,9 +15,8 @@ end
     f2 = Scanf.Format("%4e")
     ra = Ref{T}()
     @testset "$res" for res in ("-13", "99.76 ", "-12.749123479791234797123498781234981432e-4", "0x1.4711p2")
-        b = codeunits(res)
-        @test Scanf.format(b, 1, f1, ra)[1] <= length(res) + 1 &&  ra[] == parse(T, res)
-        @test Scanf.format(b, 1, f2, ra)[1] > 0 &&  ra[] == parse(T, res[1:min(4,length(res))])
+        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
+        @test scanf(res, f2, ra) == 1 &&  ra[] == parse(T, res[1:min(4,length(res))])
     end
 end
 
@@ -26,34 +25,31 @@ end
     f1 = Scanf.Format("%i")
     ra = Ref{T}()
     @testset "$res" for res in ("17", "4711", "0x7ffe")
-        b = codeunits(res)
-        @test Scanf.format(b, 1, f1, ra) == (length(res) + 1, 1) &&  ra[] == parse(T, res)
+        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
     end
 end
 @testset "integer %i to $T" for T in (Int64, Int32, Int16, BigInt, Float64, Float32, Float16, BigFloat)
     f1 = Scanf.Format("%i")
     ra = Ref{T}()
     @testset "$res" for res in ("+17", "-4711", "0x7ffe")
-        b = codeunits(res)
-        @test Scanf.format(b, 1, f1, ra) == (length(res) + 1, 1) &&  ra[] == parse(T, res)
+        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
     end
 end
 
 @testset "integer %i octal input" for T in (Int64,)
     ra = Ref{T}()
-    @test Scanf.format("0377", Scanf.Format("%i"), ra) == 1 && ra[] == 255
+    @test scanf("0377", Scanf.Format("%i"), ra) == 1 && ra[] == 255
 end
 @testset "integer %i negated input" for T in (UInt64, UInt16)
     ra = Ref{T}()
-    @test Scanf.format("-99", Scanf.Format("%i"), ra) == 1 && ra[] == -T(99)
+    @test scanf("-99", Scanf.Format("%i"), ra) == 1 && ra[] == -T(99)
 end
 
 @testset "integer %o to $T" for T in (Int64, UInt64, Int32, UInt32, Int16, UInt16)
     f1 = Scanf.Format("%o")
     ra = Ref{T}()
     @testset "$res" for res in ("17", "4711", "0377")
-        b = codeunits(res)
-        @test Scanf.format(b, 1, f1, ra) == (length(res) + 1, 1) &&  ra[] == parse(T, res, base=8)
+        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res, base=8)
     end
 end
 
@@ -61,15 +57,24 @@ end
     f1 = Scanf.Format("%x")
     ra = Ref{T}()
     @testset "$res" for res in ("0x4711",)
-        b = codeunits(res)
-        @test Scanf.format(b, 1, f1, ra) == (length(res) + 1, 1) &&  ra[] == parse(T, res)
+        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
     end
 end
 
 @testset "convert integer to other type" begin
     f = Scanf.format"%i"
     rx = Ref{String}()
-    @test_throws MethodError Scanf.format("14", f, rx)
+    @test_throws MethodError scanf("14", f, rx)
+end
+
+@testset "%i follow up" for (in, a, b) in [("0", 0, "")]
+    f = Scanf.format"%i%s"
+    ri = Ref{Int}()
+    rs = Ref{String}()
+    r = scanf(in, f, ri, rs)
+    @test r == 2
+    @test ri[] == a
+    @test rs[] == b
 end
 
 # character sets
@@ -78,11 +83,10 @@ end
     f2 = Scanf.Format("%10[abc]")
     f3 = Scanf.Format("%10[abcx-y]")
     res = "abbbcbbcbadabbdbbabbbann"
-    b = codeunits(res)
     ra = Ref{String}()
-    @test Scanf.format(b, 1, f1, ra) == (11, 1) && ra[] == res[1:10]
-    @test Scanf.format(b, 1, f2, ra) == (11, 1) && ra[] == res[1:10]
-    @test Scanf.format(b, 1, f3, ra) == (11, 1) && ra[] == res[1:10]
+    @test scanf(res, f1, ra) == 1 && ra[] == res[1:10]
+    @test scanf(res, f2, ra) == 1 && ra[] == res[1:10]
+    @test scanf(res, f3, ra) == 1 && ra[] == res[1:10]
 end
 
 @testset "character set ^" begin
@@ -90,22 +94,21 @@ end
     f2 = Scanf.Format("%10[^A-B]")
     f3 = Scanf.Format("%10[^A-BX]")
     res = "abbbcb Abadabbdbbabbbann"
-    b = codeunits(res)
     ra = Ref{String}()
-    @test Scanf.format(b, 1, f1, ra) == (8, 1) && ra[] == res[1:7]
-    @test Scanf.format(b, 1, f2, ra) == (8, 1) && ra[] == res[1:7]
-    @test Scanf.format(b, 1, f3, ra) == (8, 1) && ra[] == res[1:7]
+    @test scanf(res, f1, ra) == 1 && ra[] == res[1:7]
+    @test scanf(res, f2, ra) == 1 && ra[] == res[1:7]
+    @test scanf(res, f3, ra) == 1 && ra[] == res[1:7]
 end
 
 @testset "many arguments" begin
     r = Ref{Int}.(zeros(10))
     f = Scanf.Format("%d%d%d%d%d%d%d%d%d%d ")
-    @test Scanf.format("1 2 3 4 5 6 7 8 9 10", f, r...) == 10
+    @test scanf("1 2 3 4 5 6 7 8 9 10", f, r...) == 10
 end
 
 @testset "single characters" begin
     rc = Ref{Char}()
-    r = @sscanf("abX", "ab%c", rc)
+    r = @sscanf("a%bX", "a%%b%c", rc)
     @test rc[] == 'X'
 end
 
@@ -114,6 +117,7 @@ end
     r = @sscanf("abXYZ", "ab%3c", rc)
     @test rc == ['X', 'Y', 'Z']
 end
+
 
 # string
 @testset "strings" begin
@@ -155,7 +159,7 @@ end
     f = Scanf.Format("%d ")
     @test Scanf.Format(f) === f
     @test Scanf.format"%d " == f
-    @test_throws ArgumentError Scanf.format("", f)
+    @test_throws ArgumentError scanf("", f)
 end
 
 @testset "%n" begin

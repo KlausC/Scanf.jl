@@ -2,7 +2,7 @@ module Scanf
 
 using Base.Ryu
 
-export @scanf, @sscanf
+export @scanf, @sscanf, scanf
 
 # whitespace characters in format strings
 const WHITESPACE = b" \n\t\r\f\v"
@@ -38,7 +38,7 @@ abstract type AbstractSpec end
 """
 Typed representation of a format specifier.
 
-`T` is a `Val{'_'}`, where `_` is a valid format specifier character.
+`T` is a `Val{'X'}`, where `X` is a valid format specifier character.
 
 Fields are the various modifiers allowed for various format specifiers.
 """
@@ -53,15 +53,55 @@ struct CharsetSpec{T,S} <: AbstractSpec
     set::S
 end
 
+struct LiteralSpec{T} <: AbstractSpec
+    string::T
+end
+
+function LiteralSpec(str::T) where T<:AbstractString
+    if contains(str, "%%")
+        str = replace(str, "%%" => "%")
+        S = typeof(str)
+    else
+        S = T
+    end
+    LiteralSpec{S}(str)
+end
+
+# accessor function
+assign(::LiteralSpec) = false
+assign(spec::AbstractSpec) = spec.assign != false
+
 # recreate the format specifier string from a typed Spec
 Base.string(f::Spec{Val{T}}; modifier::String="") where {T} =
-    string("%", !f.assign ? "*" : "", f.width > 0 ? f.width : "", modifier, T)
+    string(Char(ESC), !assign(f) ? "*" : "", f.width > 0 ? f.width : "", modifier, T)
 Base.string(f::CharsetSpec{Val{Char(CSOPEN)}}; modifier::String="") =
-    string("%", !f.assign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), f.set..., Char(CSCLOSE))
+    string(Char(ESC), !assign(f) ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), showset(f.set), Char(CSCLOSE))
 Base.string(f::CharsetSpec{Val{Char(CSNEG)}}; modifier::String="") =
-    string("%", !f.assign ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), Char(CSNEG), f.set..., Char(CSCLOSE))
+    string(Char(ESC), !assign(f) ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), Char(CSNEG), showset(f.set), Char(CSCLOSE))
+Base.string(f::LiteralSpec) = string('"', f.string, '"')
+
 Base.show(io::IO, f::AbstractSpec) = print(io, string(f))
 
+# reconstruct internals of %[...]
+showset(s::AbstractString) = isempty(s) ? "1-0" : s
+showset(s::UnitRange) = "$(Char(first(s)))-$(Char(last(s)))"
+showset(t::Tuple{}) = ""
+function showset(t::Tuple{String,Vararg})
+    s = t[1]
+    m, s = special(Char(CSMINUS), s)
+    b, s = special(Char(CSCLOSE), s)
+    string(b, s, showset.(t[2:end])..., m)
+end
+showset(t::Tuple) = string(showset.(t)...)
+function special(x::Char, s::AbstractString)
+    if occursin(x, s)
+        string(x), filter(!isequal(x), s)
+    else
+        "", s
+    end
+end
+
+# internal representation of % and whitespace format specifiers
 function make_spec(T, assign, width, cs)
     if cs === nothing || isempty(cs)
         Spec{T}(assign, width)
@@ -71,8 +111,8 @@ function make_spec(T, assign, width, cs)
     end
 end
 
+# details of internal representation of %[...] format specifiers
 make_charset(cs::AbstractVector{UInt8}) = make_charset(String(cs))
-
 function make_charset(cs::String)
     M = Char(CSMINUS)
     ch = String[]
@@ -91,6 +131,8 @@ function make_charset(cs::String)
                 b = prevind(cs, j)
             elseif cj == ck
                 b = j
+            else
+                b = prevind(cs, j)
             end
             push!(ch, SubString(cs,a:b))
             a = nextind(cs, k)
@@ -108,48 +150,26 @@ Create a C scanf-compatible format object that can be used for parse formated te
 
 The input `format_str` can include any valid format specifier character and modifiers.
 
-A `Format` object can be passed to `Scanf.format(str::String, f::Format, args...)` to parse a
-formatted string, or `Printf.format(io::IO, f::Format, args...)` to parse the
+A `Format` object can be passed to `scanf(str::String, f::Format, args...)` to parse a
+formatted string, or `scanf(io::IO, f::Format, args...)` to parse the
 formatted string directly from `io`.
 
 For convenience, the `Scanf.format"..."` string macro form can be used for building
 a `Scanf.Format` object at macro-expansion-time.
-
-!!! compat "Julia 1.6"
-    `Scanf.Format` requires Julia 1.6 or later.
 """
 struct Format{S, T}
     str::S # original full format string as CodeUnits
-    # keep track of non-format specifier strings to print
-    # length(substringranges) == length(formats) + 1
-    # so when scanning, we start with scanning
-      # str[substringranges[1]], then formats[1] + args[1]
-      # then str[substringranges[2]], then formats[2] + args[2]
-      # and so on, then at the end, str[substringranges[end]]
-    substringranges::Vector{UnitRange{Int}}
-    formats::T # Tuple of Specs
+    formats::T # Tuple of Specs (including whitespace specs and literal specs)
 end
 
-# parse format string
+# construct Format object by parsing the format string
 function Format(f::AbstractString)
     isempty(f) && throw(ArgumentError("empty format string"))
     bytes = codeunits(f)
     len = length(bytes)
-    pos = 1
-    b = 0x00
-    while pos <= len
-        b = bytes[pos]
-        pos += 1
-        if b == ESC
-            pos > len && throw(ArgumentError("invalid format string: '$f'"))
-            break
-        elseif b in WHITESPACE
-            b = SKIP
-            break
-        end
-    end
-    strs = [1:pos - 1 - (b == ESC || b == SKIP)]
-    fmts = []
+    fmts = AbstractSpec[]
+    pos, b = pushliteral!(fmts, f, bytes, 1)
+
     while pos <= len || b == SKIP
         assign = true
         width = 0
@@ -172,7 +192,7 @@ function Format(f::AbstractString)
                 pos += 1
                 pos > len && break
             end
-            # parse length modifier (ignored)
+            # parse length modifiers (ignored)
             if b == UInt8('h') || b == UInt8('l')
                 prev = b
                 b = bytes[pos]
@@ -216,26 +236,43 @@ function Format(f::AbstractString)
             assign = false
         end
         push!(fmts, make_spec(type, assign, width, charset))
-        start = pos
-        b = 0x00
-        while pos <= len
-            b = bytes[pos]
-            pos += 1
-            if b == ESC
-                pos > len && throw(ArgumentError("invalid format string: '$f'"))
-                break
-            elseif b in WHITESPACE
-                b = SKIP
+        pos, b = pushliteral!(fmts, f, bytes, pos)
+    end
+    return Format(bytes, Tuple(fmts))
+end
+
+@inline function pushliteral!(fmts, f, bytes, pos)
+    len = length(bytes)
+    start = pos
+    b = 0x00
+    while pos <= len
+        b = bytes[pos]
+        pos += 1
+        if b == ESC
+            pos > len && throw(ArgumentError("incomplete format string: '$f'"))
+            if bytes[pos] == ESC
+                pos += 1
+            else
                 break
             end
+        elseif b in WHITESPACE
+            b = SKIP
+            break
         end
-        push!(strs, start:pos - 1 - (b == ESC || b == SKIP))
     end
-    return Format(bytes, strs, Tuple(fmts))
+    j = pos - 1 - ( b == ESC || b == SKIP)
+    start <= j && push!(fmts, LiteralSpec(view(f, start:j)))
+    return pos, b
 end
+
 
 Format(f::Format) = f
 
+"""
+    Scanf.format"..."
+
+Convenience string macro to call `Scanf.Format("...")
+"""
 macro format_str(str)
     str = unescape_string(str)
     esc(:(Scanf.Format($str)))
@@ -243,7 +280,7 @@ end
 
 import Base: ==
 function ==(f::T, g::T) where T<:Format
-    f.substringranges == g.substringranges && f.formats == g.formats
+    f.formats == g.formats
 end
 
 # length of utf8 encoding of character starting with this byte
@@ -251,7 +288,7 @@ end
 
 # character starting in this buffer position
 # assume buffer size is sufficient
-function _next_char(buf, pos)
+function _next_char(buf::AbstractVector{UInt8}, pos)
     b = buf[pos]
     pos += 1
     l = 8(4-leading_ones(b))
@@ -269,58 +306,69 @@ function _next_char(buf, pos)
     return reinterpret(Char, c)
 end
 
-# match escape character
-@inline function fmt(buf, pos, arg, j, spec::Spec{EscapeChar})
-    len = length(buf)
-    return pos + (pos <= len && buf[pos] == ESC), j
+_next_char(io::IO) = peek(io, Char) 
+
+# match literal strings
+@inline function fmt(io, pos, arg, j, spec::LiteralSpec)
+    str = spec.string
+    len = sizeof(str)
+    ix = 1
+    while ix <= len && !eof(io)
+        c = str[ix]
+        peek(io, Char) != str[ix] && break
+        n = ncodeunits(c)
+        skip(io, ncodeunits(c))
+        pos += n
+        ix = nextind(str, ix)
+    end
+    pos, j
 end
 
 # skip whitespace
-@inline function fmt(buf, pos, arg, j, spec::Spec{Whitespace})
-    skip_ws(buf, pos)[1], j
+@inline function fmt(io, pos, arg, j, spec::Spec{Whitespace})
+    skip_ws(io, pos), j
 end
 
-@inline function skip_ws(buf, pos)
-    len = length(buf)
-    while pos <= len 
-        b = buf[pos]
+@inline function skip_ws(io, pos)
+    while !eof(io) 
+        b = peek(io)
         n = _ncodeunits(b)
         if n == 1
             if b in WHITESPACE
+                skip(io, 1)
                 pos += 1
             else
                 break
             end
-        elseif pos + n - 1 <= len
-            c = _next_char(buf, pos)
+        else
+            c = peek(io, Char)
             if isspace(c)
+                skip(io, n)
                 pos += n
             else
                 break
             end
-        else
-            break
         end
     end
-    pos, len
+    pos
 end
 
 # single character
-@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where {T <: Chars}
+@inline function fmt(io, pos, arg, j, spec::Spec{T}) where {T <: Chars}
     assign, width = spec.assign, spec.width
     width = ifelse(width == 0, 1, width)
-    len = length(buf)
-    pos > len && throw(ArgumentError("no complete input character"))
+
+    eof(io) && read(io, Char)
     i = 0
-    while pos <= len && i < width
-        b = buf[pos]
-        n = _ncodeunits(b)
-        n > 1 && pos + n - 1 > len && throw(ArgumentError("no complete input character"))
-        r = _next_char(buf, pos)
+    while !eof(io) && i < width
+        r = peek(io, Char)
+        isvalid(Char, r) || break
         if assign
             i += 1
             assignto!(arg[j], r, i)
         end
+        n = ncodeunits(r)
+        skip(io, n)
         pos += n
     end
     assign && arg isa AbstractVector && resize!(arg, i)
@@ -336,27 +384,22 @@ function assignto!(arg::AbstractVector, r, i=1)
 end
 
 # strings
-@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where {T <: Strings}
-    pos, len = skip_ws(buf, pos)
+@inline function fmt(io, pos, arg, j, spec::Spec{T}) where {T <: Strings}
+    pos = skip_ws(io, pos)
     assign, width = spec.assign, spec.width
-    start = pos
-    m = 0
     l = 0
-    while (width == 0 || l < width) && pos <= len
-        b = buf[pos]
-        b in WHITESPACE && break
-        n = _ncodeunits(b)
-        if n > 1
-            pos + n - 1 > len && break
-            c = _next_char(buf, pos)
-            isspace(c) && break
-        end
-        m += n
+    out = IOBuffer()
+    while (width == 0 || l < width) && !eof(io)
+        c = peek(io, Char)
+        (isspace(c) || !isvalid(Char, c)) && break
+        assign && write(out, c)
+        n = ncodeunits(c)
+        skip(io, n)
         pos += n
         l += 1
     end
     if assign
-        r = String(view(buf, start:pos-1))
+        r = String(take!(out))
         assignto!(arg[j], r)
     end
     return pos, j + assign
@@ -380,110 +423,133 @@ inttype(::Type{<:Ptr}) = UInt
 inttype(::Type) = Int
 
 # integer types
-@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T <: Ints
-    pos, len = skip_ws(buf, pos)
+@inline function fmt(io, pos, arg, j, spec::Spec{T}) where T <: Ints
+    pos = skip_ws(io, pos)
     assign, width = spec.assign, spec.width
-    if width > 0 && pos + width - 1 < len
-        len = pos + width - 1
-    end
-    start = pos
+    width = ifelse(width == 0, typemax(Int), width)
+    l = 0
     sig = false
-    pos > len && return pos, j
-    b = buf[pos]
+    eof(io) && return pos, j
+    out = IOBuffer()
+    b = peek(io)
     negate = false
     if b in b"+-"
-        pos += 1
+        skip(io, 1)
+        write(out, b)
+        l += 1
         negate = b == UInt('-')
         sig = true
     end
     digits = DECIMAL
     base, digits = basespec(T)
     if base === nothing || base == 16
-        b = buf[pos]
+        b = peek(io)
         if b == UInt('0')
-            pos += 1
-            if pos <= len && buf[pos] in b"xX"
+            skip(io, 1)
+            write(out, b)
+            l += 1
+            if !eof(io) && peek(io) in b"xX"
                 digits = HEXADECIMAL
                 base = 16
-                pos += 1
-                start = pos
+                skip(io, 1)
+                l += 1
             elseif base == nothing
                 digits = OCTAL
                 base = 8
             end
         end
     end
-    while pos <= len
-        b = buf[pos]
+    while l < width && !eof(io)
+        b = peek(io)
         if b in digits
-            pos += 1
+            skip(io, 1)
+            write(out, b)
+            l += 1
         else
             break
         end
     end
     if assign
         S = inttype(eltype(arg[j]))
-        start += sig && S <: Unsigned
-        r = String(view(buf, start:pos-1))
+        b = take!(out)
+        if sig && S <: Unsigned
+            deleteat!(b, 1)
+        end
+        r = String(b)
         x = parse(S, r, base=base)
         if S <: Unsigned && negate
             x = -x
         end
         assignto!(arg[j], x)
     end
-    pos, j + assign
+    pos + l, j + assign
+end
+
+@inline function peek2(io)
+    try
+        u = peek(io, UInt16)
+        v = ntoh(u)
+        UInt8(v >> 8), UInt8(v & 0x00ff)
+    catch
+        peek(io), 0xff
+    end
 end
 
 # pointers
-@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T <: Pointer
-    pos, len = skip_ws(buf, pos)
+@inline function fmt(io, pos, arg, j, spec::Spec{T}) where T <: Pointer
+    pos = skip_ws(io, pos)
     assign, width = spec.assign, spec.width
-    if width > 0 && pos + width - 1 < len
-        len = pos + width - 1
-    end
-    start = pos
-    (pos + 1 <= len && buf[pos] == UInt('0') && buf[pos+1] in b"xX") || return pos, j
-    pos += 2
-    base, digits = nothing, HEXADECIMAL
-    while pos <= len
-        b = buf[pos]
+    width = ifelse(width == 0, typemax(Int), width)
+    rv = (pos, j)
+    eof(io) && return rv
+    b1, b2 = peek2(io)
+    b1 == UInt8('0') && b2 in b"xX" || return rv
+    skip(io, 2)
+    l = 2
+    digits = HEXADECIMAL
+    out = IOBuffer()
+    while l < width && !eof(io)
+        b = peek(io)
         if b in digits
-            pos += 1
+            skip(io, 1)
+            write(out, b)
+            l += 1
         else
             break
         end
     end
     if assign
-        r = String(view(buf, start:pos-1))
+        r = String(take!(out))
         S = inttype(eltype(arg[j]))
-        assignto!(arg[j], parse(S, r, base=base))
+        assignto!(arg[j], parse(S, r, base=16))
     end
-    pos, j + assign
+    pos + l, j + assign
 end
 
 # floating point types
-@inline function fmt(buf, pos, arg, j, spec::Spec{T}) where T<:Floats
-    pos, len = skip_ws(buf, pos)
+@inline function fmt(io, pos, arg, j, spec::Spec{T}) where T<:Floats
+    pos = skip_ws(io, pos)
     assign, width = spec.assign, spec.width
-    if width > 0 && pos + width - 1 < len
-        len = pos + width - 1
-    end
-    start = pos
+    width = ifelse(width == 0, typemax(Int), width)
     digits = DECIMAL
     expch = b"eEfF"
     x_sign = 0x01
     x_sep = 0x02
     x_exp = 0x04
     x_base = 0x08
+    l = 0
+    out = IOBuffer()
     status = x_sign  | x_sep | x_base
-    while pos <= len
-        b = buf[pos]
-        if b == UInt('0') && status & x_base != 0
-            if pos < len && buf[pos+1] in b"xX"
-                digits = HEXADECIMAL
-                expch = b"pP"
-                pos += 1
-            end
+    while l < width && !eof(io)
+        b1, b2 = peek2(io)
+        b = c = b1
+        if status & x_base != 0 && b == UInt8('0') && b2 in b"xX"
+            digits = HEXADECIMAL
+            expch = b"pP"
+            l += 1
+            skip(io, 1)
+            write(out, c)
+            c = b2
             status = (status | x_exp) & ~(x_base | x_sign)
         elseif b in digits
             status = (status | x_exp ) & ~(x_base | x_sign) 
@@ -497,18 +563,20 @@ end
         else
             break
         end
-        pos += 1
+        write(out, c)
+        skip(io, 1)
+        l += 1
     end
     if assign
-        r = String(view(buf, start:pos-1))
+        r = String(take!(out))
         A = eltype(arg[j])
         assignto!(arg[j], parse(float(A), r))
     end
-    pos, j + assign
+    pos + l, j + assign
 end
 
 # position counters
-function fmt(buf, pos, arg, j, spec::Spec{PositionCounter})
+function fmt(io, pos, arg, j, spec::Spec{PositionCounter})
     assign = spec.assign
     if assign
         assignto!(arg[j], pos - 1)
@@ -526,41 +594,33 @@ end
 @inline check_!in(c, set::Tuple) = all(x->check_!in(c, x), set)
 
 # charset types
-@inline function fmt(buf, pos, arg, j, spec::CharsetSpec)
-    pos, len = skip_ws(buf, pos)
+@inline function fmt(io, pos, arg, j, spec::CharsetSpec)
+    pos = skip_ws(io, pos)
     assign, width = spec.assign, spec.width
-    if width > 0 && pos + width - 1 < len
-        len = pos + width - 1
-    end
-    start = pos
-    while pos <= len
-        b = buf[pos]
-        n = _ncodeunits(b)
-        pos + n - 1 > len && break
-        c = _next_char(buf, pos)
+    width = ifelse(width == 0, typemax(Int), width)
+    l = 0
+    out = IOBuffer()
+    while l < width && !eof(io)
+        c = peek(io, Char)
+        n = ncodeunits(c)
         check_set(c, spec) || break
-        pos += n
+        skip(io, n)
+        write(out, c)
+        l += n
     end
     if assign
-        assignto!(arg[j], String(view(buf, start:pos-1)))
+        assignto!(arg[j], String(take!(out)))
     end
-    pos, j + assign
+    pos + l, j + assign
 end
 
 const UNROLL_UPTO = 8
-# if you have your own buffer + pos, write formatted args directly to it
-@inline function format(buf::AbstractVector{UInt8}, pos::Integer, f::Format, args...)
-    # skip first substring
-    len = length(buf)
+
+# call the format specifiers aligned with the IO stream
+@inline function formats(buf::IO, pos::Integer, f::Format, args...)
     n = length(args)
     m = countspecs(f)
     n == m || argmismatch(m, n)
-
-    fstr = f.str
-    sr = f.substringranges[1]
-    newpos = pos + length(sr) - 1
-    (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos, 0
-    pos = newpos + 1
 
     # for each format, scan arg and next substring
     # unroll up to 16 formats
@@ -569,19 +629,11 @@ const UNROLL_UPTO = 8
     Base.@nexprs 8 i -> begin
         if N >= i
             pos, j = fmt(buf, pos, args, j, f.formats[i])
-            sr = f.substringranges[i + 1]
-            newpos = pos + length(sr) - 1
-            (newpos > len || fstr[sr] != view(buf, pos:newpos)) && return pos, j - 1
-            pos = newpos + 1
         end
     end
     if N > UNROLL_UPTO
         for i = UNROLL_UPTO+1:N
             pos, j = fmt(buf, pos, args, j, f.formats[i])
-            sr = f.substringranges[i + 1]
-            newpos = pos + length(sr) - 1
-            (newpos > len || buf[sr] != view(buf, pos:newpos)) && return pos, j - 1
-            pos = newpos + 1
         end
     end
     return pos, j - 1
@@ -590,102 +642,76 @@ end
 @noinline argmismatch(a, b) =
     throw(ArgumentError("mismatch between # of format specifiers and provided args: $a != $b"))
 
-countspecs(f::Format) = count(x-> x.assign, f.formats )
+# count number of assigning format specifiers in format
+countspecs(f::Format) = count(assign, f.formats )
 
 """
-    Scanf.format(b::String, f::Scanf.Format, args::Ref...) => Int
-    Scanf.format(io::IO, f::Scanf.Format, args::Ref...)
+    Scanf.format(b::String, f::Scanf.Format, args::Ref...)
+    Scanf.format([io::IO,] f::Scanf.Format, args::Ref...)
 
 Apply a Scanf format object `f` to provided string, store results in `args`.
 (1st method), or scan directly from an `io` object (2nd method). See [`@scanf`](@ref)
-for more details on C `scanf` support.
+for more details on C `scanf` support. `io` defaults to `stdin`.
+
 Return the number of assigned arguments.
 """
-function format end
+function scanf end
 
-function format(str::String, f::Scanf.Format, args::Union{Ref,AbstractVector}...)
-    b = codeunits(str)
-    format(b, 1, f, args...)[2]
-end
-
-function format(io::IO, f::Format, args::Union{Ref,AbstractVector}...)
-    str = read(io, String)
-    # TODO support reading line by line
-    format(str, f, args...)[2]
-end
+scanf(io::IO, f::Format, args::Union{Ref,AbstractVector}...) = formats(io, 1, f, args...)[2]
+scanf(f::Format, args...) = scanf(stdin, f, args...)
+scanf(str::String, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
 """
-    @scanf([io:IO, ], "%Fmt", args...)
+    @scanf([io:IO, ], "%Fmt", args::Ref...)
 
-Print `args` using C `scanf` style format specification string.
-Optionally, an `IO` may be passed as the first argument to redirect output.
+Scan input stream using C `scanf` style format specification string and assign values 
+to arguments.
 
-# Examples
-```jldoctest
-julia> @scanf "Hello %s" "world"
-Hello world
-
-julia> @scanf "Scientific notation %e" 1.234
-Scientific notation 1.234000e+00
-
-julia> @scanf "Scientific notation three digits %.3e" 1.23456
-Scientific notation three digits 1.235e+00
-
-julia> @scanf "Decimal two digits %.2f" 1.23456
-Decimal two digits 1.23
-
-julia> @scanf "Padded to length 5 %5i" 123
-Padded to length 5   123
-
-julia> @scanf "Padded with zeros to length 6 %06i" 123
-Padded with zeros to length 6 000123
-
-julia> @scanf "Use shorter of decimal or scientific %g %g" 1.23 12300000.0
-Use shorter of decimal or scientific 1.23 1.23e+07
-```
-
-For a systematic specification of the format, see [here](https://www.cplusplus.com/reference/cstdio/scanf/).
-See also [`@scanf`](@ref).
-
-# Caveats
-`Inf` and `NaN` are printed consistently as `Inf` and `NaN` for flags `%a`, `%A`,
-`%e`, `%E`, `%f`, `%F`, `%g`, and `%G`. Furthermore, if a floating point number is
-equally close to the numeric values of two possible output strings, the output
-string further away from zero is chosen.
+The format string (not a variable) is analyzed at macro expansion time.
+Equivalent to `scanf(io, Scanf.format"%Fmt", args...)`.
 
 # Examples
 ```jldoctest
-julia> @scanf("%f %F %f %F", Inf, Inf, NaN, NaN)
-Inf Inf NaN NaN
-
-julia> @scanf "%.0f %.1f %f" 0.5 0.025 -0.0078125
-0 0.0 -0.007812
+refs = Ref{Float64}.(1:4)
+@scanf(%f%f%f%f, refs...)
 ```
 """
 macro scanf(io_or_fmt, args...)
     if io_or_fmt isa String
         f = Format(io_or_fmt)
-        return esc(:($Scanf.format(stdin, $f, $(args...))))
+        return esc(:($Scanf.scanf(stdin, $f, $(args...))))
     else
         f = Format(args[1])
-        return esc(:($Scanf.format($io_or_fmt, $f, $(Base.tail(args)...))))
+        return esc(:($Scanf.scanf($io_or_fmt, $f, $(Base.tail(args)...))))
     end
 end
 
 """
-    @sscanf("%Fmt", args...)
+    @sscanf(str, "%Fmt", args...)
 
-Return [`@scanf`](@ref) formatted output as string.
+Like `@scanf`, taking input from a string. The format string must be literal, not a variable.
 
 # Examples
 ```jldoctest
-julia> @sscanf "this is a %s %15.1f" "test" 34.567
-"this is a test            34.6"
+julia> ra = Ref{Float64}()
+Base.RefValue{Float64}(6.8990893377741e-310)
+
+julia> rb = Ref{String}()
+Base.RefValue{String}(#undef)
+
+julia> @sscanf "23.4 text" "%f %2s" ra rb
+2
+
+julia> ra[]
+23.4
+
+julia> rb[]
+"te"
 ```
 """
 macro sscanf(str, fmt, args...)
     fmt = fmt isa String ? Format(fmt) : fmt
-    return esc(:($Scanf.format($str, $fmt, $(args...))))
+    return esc(:($Scanf.scanf($str, $fmt, $(args...))))
 end
 
 end # module
