@@ -225,8 +225,6 @@ function Format(f::AbstractString)
                 (xpos === nothing || start >= xpos ) &&  throw(ArgumentError("invalid format string '$f', after '$txt]' a Char(CSCLOSE) is missing"))
                 charset = view(bytes, start:xpos-1)   
                 pos = xpos + 1
-            elseif b == ESC
-                assign = false
             else
                  throw(ArgumentError("invalid format string: '$f', invalid type specifier: '$(Char(b))'"))
             end
@@ -285,28 +283,6 @@ end
 
 # length of utf8 encoding of character starting with this byte
 @inline _ncodeunits(a::UInt8) = a < 0xc0 ? 1 : a < 0xe0 ? 2 : a < 0xf0 ? 3 : 4
-
-# character starting in this buffer position
-# assume buffer size is sufficient
-function _next_char(buf::AbstractVector{UInt8}, pos)
-    b = buf[pos]
-    pos += 1
-    l = 8(4-leading_ones(b))
-    c = UInt32(b) << 24
-    if l < 24
-        s = 16
-        while s ≥ l
-            b = buf[pos]
-            b & 0xc0 == 0x80 || break
-            pos += 1
-            c |= UInt32(b) << s
-            s -= 8
-        end
-    end
-    return reinterpret(Char, c)
-end
-
-_next_char(io::IO) = peek(io, Char) 
 
 # match literal strings
 @inline function fmt(io, pos, arg, j, spec::LiteralSpec)

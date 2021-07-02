@@ -172,8 +172,8 @@ end
 end
 
 @testset "show specifiers" begin
-    f = Scanf.format"%d%[abc]%[^abc] "
-    @test sprint(show, f.formats) == "(%d, %[abc], %[^abc], %*_)"
+    f = Scanf.format"%dABC%[abc]%[^abc] %[B-AC]"
+    @test sprint(show, f.formats) == "(%d, \"ABC\", %[abc], %[^abc], %*_, %[C])"
 end
 
 end # @testset "Scanf"
