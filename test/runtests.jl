@@ -185,10 +185,19 @@ end
 end
 
 @testset "scanf from stdin" begin
-    f1() = scanf(Scanf.format"abc")
-    f2() = begin @scanf "abc" end
-    @test redirect_stdin(f1, devnull) == -1
-    @test_broken redirect_stdin(f2, devnull) == -1
+    file = tempname(cleanup=true)
+    write(file, "abc42")
+    ri = Ref{Int}()
+    f1() = scanf(Scanf.format"abc%i", ri)
+    f2() = begin r = @scanf "abc%i" ri; return r end
+
+    io = open(file)
+    @test redirect_stdin(f1, io) == 1
+    close(io)
+
+    io = open(file)
+    @test redirect_stdin(f2, io) == 1
+    close(io)
 end
 
 end # @testset "Scanf"

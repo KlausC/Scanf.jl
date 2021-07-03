@@ -101,7 +101,7 @@ Return the number of assigned arguments.
 """
 function scanf end
 
-scanf(io::IO, f::Format, args::Union{Ref,AbstractVector}...) = formats(io, f, args...)
+scanf(io::IO, f::Format, args::Union{Ref,AbstractVector}...) = scanner(io, f, args...)
 scanf(f::Format, args...) = scanf(stdin, f, args...)
 scanf(str::AbstractString, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
@@ -139,7 +139,7 @@ macro scanf(arg, args...)
     n = length(args)
     if arg isa String && !(n > 0 && args[1] isa String) 
         fmt = arg
-        io = stdin
+        io = :stdin
     elseif n >= 1 && args[1] isa String
         fmt = args[1]
         io = arg
@@ -148,7 +148,7 @@ macro scanf(arg, args...)
         throw(ArgumentError("invalid macro arguments: @scanf $arg $(join(args, ' '))"))
     end
     f = Format(unescape_string(fmt))
-    return esc(:($Scanf.scanf($arg, $f, $(args...))))
+    return esc(:($Scanf.scanf($io, $f, $(args...))))
 end
 
 """
@@ -533,7 +533,7 @@ end
 end
 
 # call the format specifiers aligned with the IO stream
-@inline function formats(io::IO, f::Format, args...)
+@inline function scanner(io::IO, f::Format, args...)
     n = length(args)
     m = countspecs(f)
     n == m || argmismatch(m, n)
@@ -547,8 +547,7 @@ end
     N = length(formats)
     j = 0
     UNROLL_UPTO = 8
-    Base.@nexprs 8 i -> begin
-        if N >= i
+    Base.@nexprs 8 i -> begin if N >= i
             fi = formats[i]
             pos, succ = fmt(io, pos, args, fi)
             succ || @goto BREAK
@@ -598,7 +597,6 @@ Base.show(io::IO, f::AbstractSpec) = print(io, string(f))
 # reconstruct internals of %[...]
 showset(s::UnitRange) = "$(Char(first(s)))-$(Char(last(s)))"
 
-showset(t::Tuple{}) = ""
 function showset(t::Tuple{String,Vararg})
     s = t[1]
     m, s = special(Char(CSMINUS), s)
