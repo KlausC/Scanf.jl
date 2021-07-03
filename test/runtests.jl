@@ -15,8 +15,8 @@ end
     f2 = Scanf.Format("%4e")
     ra = Ref{T}()
     @testset "$res" for res in ("-13", "99.76 ", "-12.749123479791234797123498781234981432e-4", "0x1.4711p2")
-        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
-        @test scanf(res, f2, ra) == 1 &&  ra[] == parse(T, res[1:min(4,length(res))])
+        @test scanf(res, f1, ra)[1] == 1 &&  ra[] == parse(T, res)
+        @test scanf(res, f2, ra)[1] == 1 &&  ra[] == parse(T, res[1:min(4,length(res))])
     end
 end
 
@@ -25,31 +25,31 @@ end
     f1 = Scanf.Format("%i")
     ra = Ref{T}()
     @testset "$res" for res in ("17", "4711", "0x7ffe")
-        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
+        @test scanf(res, f1, ra)[1] == 1 &&  ra[] == parse(T, res)
     end
 end
 @testset "integer %i to $T" for T in (Int64, Int32, Int16, BigInt, Float64, Float32, Float16, BigFloat)
     f1 = Scanf.Format("%i")
     ra = Ref{T}()
     @testset "$res" for res in ("+17", "-4711", "0x7ffe")
-        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
+        @test scanf(res, f1, ra)[1] == 1 &&  ra[] == parse(T, res)
     end
 end
 
 @testset "integer %i octal input" for T in (Int64,)
     ra = Ref{T}()
-    @test scanf("0377", Scanf.Format("%i"), ra) == 1 && ra[] == 255
+    @test scanf("0377", Scanf.Format("%i"), ra)[1] == 1 && ra[] == 255
 end
 @testset "integer %i negated input" for T in (UInt64, UInt16)
     ra = Ref{T}()
-    @test scanf("-99", Scanf.Format("%i"), ra) == 1 && ra[] == -T(99)
+    @test scanf("-99", Scanf.Format("%i"), ra)[1] == 1 && ra[] == -T(99)
 end
 
 @testset "integer %o to $T" for T in (Int64, UInt64, Int32, UInt32, Int16, UInt16)
     f1 = Scanf.Format("%o")
     ra = Ref{T}()
     @testset "$res" for res in ("17", "4711", "0377")
-        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res, base=8)
+        @test scanf(res, f1, ra)[1] == 1 &&  ra[] == parse(T, res, base=8)
     end
 end
 
@@ -57,24 +57,22 @@ end
     f1 = Scanf.Format("%x")
     ra = Ref{T}()
     @testset "$res" for res in ("0x4711",)
-        @test scanf(res, f1, ra) == 1 &&  ra[] == parse(T, res)
+        @test scanf(res, f1, ra)[1] == 1 &&  ra[] == parse(T, res)
     end
 end
 
 @testset "convert integer to other type" begin
     f = Scanf.format"%i"
-    rx = Ref{String}()
-    @test_throws MethodError scanf("14", f, rx)
+    @test_throws MethodError scanf("14", f, String)
 end
 
 @testset "%i follow up" for (inp, rr, a, b) in [("Z", 0, 0, ""), ("0", 1, 0, ""), ("0x", 1, 0, ""), ("0xZ", 2, 0, "Z")]
     f = Scanf.format"%i%s"
     ri = Ref{Int}(a)
-    rs = Ref{String}(b)
-    r = scanf(inp, f, ri, rs)
+    r, (x, y) = scanf(inp, f, ri, String)
     @test r == rr
-    @test ri[] == a
-    @test rs[] == b
+    @test r < 1 || ri[] == a == x
+    @test r < 2 || b == y
 end
 
 # character sets
@@ -84,9 +82,9 @@ end
     f3 = Scanf.Format("%10[abcx-y ]")
     res = " abbcbbcbadabbdbbabbbann"
     ra = Ref{String}()
-    @test scanf(res, f1, ra) == 1 && ra[] == res[1:10]
-    @test scanf(res, f2, ra) == 1 && ra[] == res[1:10]
-    @test scanf(res, f3, ra) == 1 && ra[] == res[1:10]
+    @test scanf(res, f1, ra)[1] == 1 && ra[] == res[1:10]
+    @test scanf(res, f2, ra)[1] == 1 && ra[] == res[1:10]
+    @test scanf(res, f3, ra)[1] == 1 && ra[] == res[1:10]
 end
 
 @testset "character set ^" begin
@@ -95,45 +93,40 @@ end
     f3 = Scanf.Format("%10[^A-BX]")
     res = " abbcb Abadabbdbbabbbann"
     ra = Ref{String}()
-    @test scanf(res, f1, ra) == 1 && ra[] == res[1:7]
-    @test scanf(res, f2, ra) == 1 && ra[] == res[1:7]
-    @test scanf(res, f3, ra) == 1 && ra[] == res[1:7]
+    @test scanf(res, f1, ra)[1] == 1 && ra[] == res[1:7]
+    @test scanf(res, f2, ra)[1] == 1 && ra[] == res[1:7]
+    @test scanf(res, f3, ra)[1] == 1 && ra[] == res[1:7]
 end
 
 @testset "many arguments" begin
-    r = Ref{Int}.(zeros(10))
     f = Scanf.Format("%d%d%d%d%d%d%d%d%d%d ")
-    @test scanf("1 2 3 4 5 6 7 8 9 10", f, r...) == 10
+    @test scanf("1 2 3 4 5 6 7 8 9 10", f, fill(Int, 10)...)[1] == 10
 end
 
 @testset "single characters" begin
     rc = Ref{Char}()
-    r = @scanf("a%bX", "a%%b%c", rc)
-    @test rc[] == 'X'
+    r, (c,) = @scanf("a%bX", "a%%b%c", rc)
+    @test c == 'X' == rc[]
 end
 
 @testset "multiple characters" begin
-    rc = Vector{Char}(undef, 0)
-    r = @scanf("abXYZ", "ab%3c", rc)
-    @test rc == ['X', 'Y', 'Z']
+    r, (cc,) = @scanf("abXYZ", "ab%3c", Char[])
+    @test ['X', 'Y', 'Z'] == cc
 end
 
 
 # string
 @testset "strings" begin
-    ra = Ref{String}()
-    rb = Ref{String}()
-
-    r = @scanf("Hällo\u1680heimør", "%s%s", ra, rb)
+    r, (a, b) = @scanf("Hällo\u1680heimør", "%s%s", String, String)
     @test r == 2
-    @test ra[] == "Hällo"
-    @test rb[] == "heimør"
+    @test "Hällo" == a
+    @test "heimør" == b
 end
 
 # position
 @testset "%n" begin
     rn = Ref{Int}()
-    @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == 1
+    @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == (1, (9,))
     @test rn[] == 9
 end
 
@@ -141,7 +134,7 @@ end
 @testset "basics" begin
     ra = Ref{Int}()
     @test_throws ArgumentError try @eval @scanf(1, 2, 3); catch ex; rethrow(ex.error); end
-    @test @scanf("%15", "%%%d", ra) == 1
+    @test @scanf("%15", "%%%d", ra) == (1, (15,))
     @test ra[] == 15
     @test_throws ArgumentError Scanf.Format("")
     @test_throws ArgumentError Scanf.Format("%+")
@@ -166,7 +159,7 @@ end
 # failing literal match consumes all matching characters
 @testset "literal string" begin
     io = IOBuffer("AÖÜdef")
-    @test scanf(io, Scanf.format"AÖÜDEF") == 0
+    @test scanf(io, Scanf.format"AÖÜDEF")[1] == 0
     @test read(io, String) == "def"
 end
 
@@ -189,14 +182,14 @@ end
     write(file, "abc42")
     ri = Ref{Int}()
     f1() = scanf(Scanf.format"abc%i", ri)
-    f2() = begin r = @scanf "abc%i" ri; return r end
+    f2() = @scanf "abc%i" ri
 
     io = open(file)
-    @test redirect_stdin(f1, io) == 1
+    @test redirect_stdin(f1, io)[1] == 1
     close(io)
 
     io = open(file)
-    @test redirect_stdin(f2, io) == 1
+    @test redirect_stdin(f2, io)[1] == 1
     close(io)
 end
 

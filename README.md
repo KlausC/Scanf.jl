@@ -8,14 +8,16 @@ It tries to mimic the behaviour of the C-function with the same name.
 
 ## Features
 
-Scanf provides the macro `@scanf([io, ] "%format", args...)` and the function `scanf(io, f::Scanf.Format, args...)`.
+Scanf provides the macro `r, (a,...) = @scanf([io, ] "%format", args...)`
+and the function `r, (a,...) = scanf(io, f::Scanf.Format, args...)`.
 
 The format string must be a string literal, which is evaluated once at macro expansion time.
 
 Alternatively `f = Scanf.format"%format_string"` creates a format object, which can be used in the function call.
 
-The arguments are of type `Ref{T}` where `T` is a concrete type. 
-All output data are stored in new objects of that type.
+The arguments are of type `T`, `Ref{T}`, or `Vector{T}` where `T` is a concrete type. 
+All output data are returned in a tuple after the number of assigned values.
+Additionally they are stored in the `Ref` or `Vector` objects.
 
 The format strings follow the definition of GNU-scanf [manual page scanf](https://www.man7.org/linux/man-pages/man3/scanf.3.html)
 with some adaptations:
@@ -33,7 +35,7 @@ with some adaptations:
 + The optional modifiers `'` and `m` are not supported / not applicable.
 
 + The optional type modifiers like `h`, `l`, `L` etc. are ignored;
- the target type is derived form the reference type of the corresponding argument, instead.
+ the target type is derived form the type of the corresponding argument, instead.
 
 + for type specifier `%c`, without `width` specified, the corresponding argument must have type `Ref{Char}`.
 
@@ -56,9 +58,7 @@ julia> using Scanf
 
 julia> ra = Ref{Int}();
 
-julia> rb = Ref{String}();
-
-julia> r = @scanf("  13 This is a prime number", "%d%[ a-zA-Z]", ra, rb)
+julia> r, (a, b) = @scanf("  13 This is a prime number", "%d%[ a-zA-Z]", ra, String)
 2
 
 julia> ra

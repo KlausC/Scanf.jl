@@ -101,7 +101,7 @@ Return the number of assigned arguments.
 """
 function scanf end
 
-scanf(io::IO, f::Format, args::Union{Ref,AbstractVector}...) = scanner(io, f, args...)
+scanf(io::IO, f::Format, args::Union{Ref,AbstractVector,Type}...) = scanner(io, f, args...)
 scanf(f::Format, args...) = scanf(stdin, f, args...)
 scanf(str::AbstractString, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
@@ -270,7 +270,7 @@ end
 Format(f::Format) = f
 
 # match literal strings
-@inline function fmt(io, pos, arg, spec::LiteralSpec)
+@inline function fmt(io, pos, arg, res, spec::LiteralSpec)
     str = spec.string
     len = sizeof(str)
     ix = 1
@@ -286,12 +286,12 @@ Format(f::Format) = f
 end
 
 # skip whitespace spec
-@inline function fmt(io, pos, arg, spec::Spec{Whitespace})
+@inline function fmt(io, pos, arg, res, spec::Spec{Whitespace})
     skip_ws(io, pos), true
 end
 
 # match character(s)
-@inline function fmt(io, pos, arg, spec::Spec{T}) where {T <: Chars}
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T <: Chars}
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, 1, width)
 
@@ -303,7 +303,7 @@ end
         isvalid(Char, r) || break
         if assign
             i += 1
-            assignto!(arg[j], r, i)
+            assignto!(arg[j], res, j, r, i)
         end
         n = ncodeunits(r)
         skip(io, n)
@@ -313,8 +313,8 @@ end
     return pos, pos > start
 end
 
-# strings
-@inline function fmt(io, pos, arg, spec::Spec{T}) where {T <: Strings}
+# string spec
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T <: Strings}
     pos = skip_ws(io, pos)
     assign, j = assignnr(spec); width = spec.width
     l = 0
@@ -330,13 +330,13 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        assignto!(arg[j], r)
+        assignto!(arg[j], res, j, r)
     end
     return pos, l > 0
 end
 
-# charset types
-@inline function fmt(io, pos, arg, spec::CharsetSpec)
+# charset specs
+@inline function fmt(io, pos, arg, res, spec::CharsetSpec)
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     l = 0
@@ -350,13 +350,13 @@ end
         l += n
     end
     if assign && l > 0
-        assignto!(arg[j], String(take!(out)))
+        assignto!(arg[j], res, j, String(take!(out)))
     end
     pos + l, l > 0
 end
 
-# integer types
-@inline function fmt(io, pos, arg, spec::Spec{T}) where T <: Ints
+# integer specs
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where T <: Ints
     pos = skip_ws(io, pos)
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
@@ -413,13 +413,13 @@ end
         if S <: Unsigned && negate
             x = -x
         end
-        assignto!(arg[j], x)
+        assignto!(arg[j], res, j, x)
     end
     pos + l, l > 0
 end
 
-# pointers
-@inline function fmt(io, pos, arg, spec::Spec{T}) where T <: Pointer
+# pointer spec
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where T <: Pointer
     pos = skip_ws(io, pos)
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
@@ -444,13 +444,13 @@ end
     if assign && l > 0
         r = String(take!(out))
         S = inttype(eltype(arg[j]))
-        assignto!(arg[j], parse(S, r, base=16))
+        assignto!(arg[j], res, j, parse(S, r, base=16))
     end
     pos + l, l > 0
 end
 
-# floating point types
-@inline function fmt(io, pos, arg, spec::Spec{T}) where T<:Floats
+# floating point spec
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where T<:Floats
     pos = skip_ws(io, pos)
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
@@ -493,16 +493,16 @@ end
     if assign && l > 0
         r = String(take!(out))
         A = eltype(arg[j])
-        assignto!(arg[j], parse(float(A), r))
+        assignto!(arg[j], res, j, parse(float(A), r))
     end
     pos + l, l > 0
 end
 
-# position counters
-function fmt(io, pos, arg, spec::Spec{PositionCounter})
+# position counter spec
+function fmt(io, pos, arg, res, spec::Spec{PositionCounter})
     assign, j = assignnr(spec)
     if assign
-        assignto!(arg[j], pos - 1)
+        assignto!(arg[j], res, j, pos - 1)
     end
     pos, true
 end
@@ -537,8 +537,9 @@ end
     n = length(args)
     m = countspecs(f)
     n == m || argmismatch(m, n)
+    res = fill!(Vector{Any}(undef, m), nothing)
     EOF = -1
-    eof(io) && return EOF
+    eof(io) && return EOF, Tuple(res)
     pos = 1
 
     # for each format, scan arg and next substring
@@ -549,7 +550,7 @@ end
     UNROLL_UPTO = 8
     Base.@nexprs 8 i -> begin if N >= i
             fi = formats[i]
-            pos, succ = fmt(io, pos, args, fi)
+            pos, succ = fmt(io, pos, args, res, fi)
             succ || @goto BREAK
             j += assign(fi)
         end
@@ -557,23 +558,32 @@ end
     if N > UNROLL_UPTO
         for i = UNROLL_UPTO+1:N
             fi = formats[i]
-            pos, succ = fmt(io, pos, args, fi)
+            pos, succ = fmt(io, pos, args, res, fi)
             succ || break
             j += assign(fi)
         end
     end
-    @label BREAK; return j
+    @label BREAK; return j, Tuple(res)
 end
 
 # utility functions
 
 # assign value to reference or vector element
-assignto!(arg::Ref, r, i=1) = arg[] = if i == 1; arg[] = r end
-function assignto!(arg::AbstractVector, r, i=1)
+function assignto!(arg::Ref, res, j, r, i=1)
+    if i == 1
+        arg[] = r
+    end
+    res[j] = r
+end
+function assignto!(arg::AbstractVector, res, j, r, i=1)
     if i > length(arg)
         resize!(arg, i)
     end
     arg[i] = r
+    res[j] = arg
+end
+function assignto!(::Type{T}, res, j, r, i=1) where T
+    res[j] = T(r)
 end
 
 # accessor functions
