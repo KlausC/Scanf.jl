@@ -67,12 +67,12 @@ end
     @test_throws MethodError scanf("14", f, rx)
 end
 
-@testset "%i follow up" for (in, a, b) in [("0", 0, "")]
+@testset "%i follow up" for (inp, rr, a, b) in [("Z", 0, 0, ""), ("0", 1, 0, ""), ("0x", 1, 0, ""), ("0xZ", 2, 0, "Z")]
     f = Scanf.format"%i%s"
-    ri = Ref{Int}()
-    rs = Ref{String}()
-    r = scanf(in, f, ri, rs)
-    @test r == 2
+    ri = Ref{Int}(a)
+    rs = Ref{String}(b)
+    r = scanf(inp, f, ri, rs)
+    @test r == rr
     @test ri[] == a
     @test rs[] == b
 end
@@ -160,6 +160,13 @@ end
     @test Scanf.Format(f) === f
     @test Scanf.format"%d " == f
     @test_throws ArgumentError scanf("", f)
+end
+
+# failing literal match consumes all matching characters
+@testset "literal string" begin
+    io = IOBuffer("AÖÜdef")
+    @test scanf(io, Scanf.format"AÖÜDEF") == 0
+    @test read(io, String) == "def"
 end
 
 @testset "%n" begin
