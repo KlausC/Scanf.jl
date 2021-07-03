@@ -3,14 +3,16 @@
 [![Build Status](https://github.com/KlausC/Scanf.jl/workflows/CI/badge.svg)](https://github.com/KlausC/Scanf.jl/actions)
 [![Coverage](https://codecov.io/gh/KlausC/Scanf.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/KlausC/Scanf.jl)
 
+Scanf scans UTF8-encoded input streams or strings and creates output data according to a format string.
+It tries to mimic the behaviour of the C-fuction with the same name.
 
 ## Features
 
-Scanf provides the macros `@scanf([io, ] "%format", args...)` and `@sscanf(string, "%format", args...)`.
+Scanf provides the macro `@scanf([io, ] "%format", args...)` and the function `scanf(io, f::Scanf.Format, args...)`.
 
 The format string must be a string literal, which is evaluated once at macro expansion time.
 
-Alternatively `f = Scanf.Format(format_string)` creates a format object, which can be used like `Scanf.format([io|string,] f, args...)`.
+Alternatively `f = Scanf.format"%format_string"` creates a format object, which can be used in the function call.
 
 The arguments are of type `Ref{T}` where `T` is a concrete type. 
 All output data are stored in new objects of that type.
@@ -30,31 +32,39 @@ with some adaptations:
 
 + The optional modifiers `'` and `m` are not supported / not applicable.
 
-+ The optional type modifiers like `l`, `h`, etc. are not supported; the taget type is derived form the reference type of the corresponding
-argument, though.
++ The optional type modifiers like `h`, `l`, `L` etc. are ignored;
+ the target type is derived form the reference type of the corresponding argument, instead.
 
 + for type specifier `%c`, without `width` specified, the corresponding argument must have type `Ref{Char}`.
 
 + for type specifier `%Nc`, with a width field `N`, the argument must have type `Vector{Char}`.
   This vector is re-used and resized to the number of characters actually read.
 
-+ the type specifier `n`, returns an integer value, which is the byte offset in the input data, consumed so far.
++ the type specifier `%n`, returns an integer value, which is the byte offset in the input data, consumed so far.
 
-+ the type specifier `p` requires a `Ref{Ptr{Nothing}}` output argument.
++ the type specifier `%p` requires a `Ref{Ptr{Nothing}}` output argument.
 
-+ all floating point type specifiers `efgaEFGA` are used interchangeably. They support all input data, as produced by the corresponding
++ all floating point type specifiers `efgaEFGA` are equivalent. Each of them supports all input data, as produced by the corresponding
   @printf type specifiers, especially the hexadecimal floating point format.
 
-+ The return value of both functions is the amount of output arguments populated by the functions. Also the arguments for `%n` are counted. 
++ The return value of both calls is the amount of output arguments populated by the functions. Also the arguments for `%n` are counted. 
 
  ## Usage
 
  ```julia
+julia> using Scanf
 
-     using Scanf
-    
-     ra = Ref{Int}()
-     rb = Ref{String}()
+julia> ra = Ref{Int}();
 
-     @sscanf("  13 This is a prime number", "%d%[a-zA-Z]"), ra, rb)
+julia> rb = Ref{String}();
+
+julia> r = @scanf("  13 This is a prime number", "%d%[ a-zA-Z]", ra, rb)
+2
+
+julia> ra
+Base.RefValue{Int64}(13)
+
+julia> rb
+Base.RefValue{String}(" This is a prime number")
+
 ```

@@ -101,14 +101,14 @@ Return the number of assigned arguments.
 """
 function scanf end
 
-scanf(io::IO, f::Format, args::Union{Ref,AbstractVector}...) = formats(io, 1, f, args...)
+scanf(io::IO, f::Format, args::Union{Ref,AbstractVector}...) = formats(io, f, args...)
 scanf(f::Format, args...) = scanf(stdin, f, args...)
-scanf(str::String, f::Format, args...) = scanf(IOBuffer(str), f, args...)
+scanf(str::AbstractString, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
 """
-    @scanf([io:IO, ], "%Fmt", args::Ref...)
+    @scanf([io:Union{IO,String}, ], "%Fmt", args::Ref...)
 
-Scan input stream using C `scanf` style format specification string and assign values 
+Scan input stream or string of using C `scanf` style format specification string and assign values 
 to arguments.
 
 The format string (not a variable) is analyzed at macro expansion time.
@@ -118,32 +118,14 @@ Equivalent to `scanf(io, Scanf.format"%Fmt", args...)`.
 ```jldoctest
 refs = Ref{Float64}.(1:4)
 @scanf(%f%f%f%f, refs...)
-```
-"""
-macro scanf(io_or_fmt, args...)
-    if io_or_fmt isa String
-        f = Format(io_or_fmt)
-        return esc(:($Scanf.scanf(stdin, $f, $(args...))))
-    else
-        f = Format(args[1])
-        return esc(:($Scanf.scanf($io_or_fmt, $f, $(Base.tail(args)...))))
-    end
-end
 
-"""
-    @sscanf(str, "%Fmt", args...)
-
-Like `@scanf`, taking input from a string. The format string must be literal, not a variable.
-
-# Examples
-```jldoctest
 julia> ra = Ref{Float64}()
 Base.RefValue{Float64}(6.8990893377741e-310)
 
 julia> rb = Ref{String}()
 Base.RefValue{String}(#undef)
 
-julia> @sscanf "23.4 text" "%f %2s" ra rb
+julia> @scanf "23.4 text" "%f %2s" ra rb
 2
 
 julia> ra[]
@@ -153,9 +135,20 @@ julia> rb[]
 "te"
 ```
 """
-macro sscanf(str, fmt, args...)
-    fmt = fmt isa String ? Format(fmt) : fmt
-    return esc(:($Scanf.scanf($str, $fmt, $(args...))))
+macro scanf(arg, args...)
+    n = length(args)
+    if arg isa String && !(n > 0 && args[1] isa String) 
+        fmt = arg
+        io = stdin
+    elseif n >= 1 && args[1] isa String
+        fmt = args[1]
+        io = arg
+        args = Base.tail(args)
+    else
+        throw(ArgumentError("invalid macro arguments: @scanf $arg $(join(args, ' '))"))
+    end
+    f = Format(unescape_string(fmt))
+    return esc(:($Scanf.scanf($arg, $f, $(args...))))
 end
 
 """
@@ -292,12 +285,12 @@ Format(f::Format) = f
     pos + l, l == len
 end
 
-# whitespace spec
+# skip whitespace spec
 @inline function fmt(io, pos, arg, spec::Spec{Whitespace})
     skip_ws(io, pos), true
 end
 
-# single character
+# match character(s)
 @inline function fmt(io, pos, arg, spec::Spec{T}) where {T <: Chars}
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, 1, width)
@@ -320,14 +313,6 @@ end
     return pos, pos > start
 end
 
-assignto!(arg::Ref, r, i=1) = arg[] = if i == 1; arg[] = r end
-function assignto!(arg::AbstractVector, r, i=1)
-    if i > length(arg)
-        resize!(arg, i)
-    end
-    arg[i] = r
-end
-
 # strings
 @inline function fmt(io, pos, arg, spec::Spec{T}) where {T <: Strings}
     pos = skip_ws(io, pos)
@@ -348,6 +333,26 @@ end
         assignto!(arg[j], r)
     end
     return pos, l > 0
+end
+
+# charset types
+@inline function fmt(io, pos, arg, spec::CharsetSpec)
+    assign, j = assignnr(spec); width = spec.width
+    width = ifelse(width == 0, typemax(Int), width)
+    l = 0
+    out = IOBuffer()
+    while l < width && !eof(io)
+        c = peek(io, Char)
+        n = ncodeunits(c)
+        check_set(c, spec) || break
+        skip(io, n)
+        write(out, c)
+        l += n
+    end
+    if assign && l > 0
+        assignto!(arg[j], String(take!(out)))
+    end
+    pos + l, l > 0
 end
 
 # integer types
@@ -502,27 +507,6 @@ function fmt(io, pos, arg, spec::Spec{PositionCounter})
     pos, true
 end
 
-# charset types
-@inline function fmt(io, pos, arg, spec::CharsetSpec)
-    pos = skip_ws(io, pos)
-    assign, j = assignnr(spec); width = spec.width
-    width = ifelse(width == 0, typemax(Int), width)
-    l = 0
-    out = IOBuffer()
-    while l < width && !eof(io)
-        c = peek(io, Char)
-        n = ncodeunits(c)
-        check_set(c, spec) || break
-        skip(io, n)
-        write(out, c)
-        l += n
-    end
-    if assign && l > 0
-        assignto!(arg[j], String(take!(out)))
-    end
-    pos + l, l > 0
-end
-
 # skip WS characters in io stream
 @inline function skip_ws(io, pos)
     while !eof(io) 
@@ -549,10 +533,13 @@ end
 end
 
 # call the format specifiers aligned with the IO stream
-@inline function formats(buf::IO, pos::Integer, f::Format, args...)
+@inline function formats(io::IO, f::Format, args...)
     n = length(args)
     m = countspecs(f)
     n == m || argmismatch(m, n)
+    EOF = -1
+    eof(io) && return EOF
+    pos = 1
 
     # for each format, scan arg and next substring
     # unroll up to 8 formats
@@ -563,24 +550,33 @@ end
     Base.@nexprs 8 i -> begin
         if N >= i
             fi = formats[i]
-            pos, succ = fmt(buf, pos, args, fi)
-            succ || @goto ERROR
+            pos, succ = fmt(io, pos, args, fi)
+            succ || @goto BREAK
             j += assign(fi)
         end
     end
     if N > UNROLL_UPTO
         for i = UNROLL_UPTO+1:N
             fi = formats[i]
-            pos, succ = fmt(buf, pos, args, fi)
+            pos, succ = fmt(io, pos, args, fi)
             succ || break
             j += assign(fi)
         end
     end
-    @label ERROR
+    @label BREAK
     return j
 end
 
 # utility functions
+
+# assign value to reference or vector element
+assignto!(arg::Ref, r, i=1) = arg[] = if i == 1; arg[] = r end
+function assignto!(arg::AbstractVector, r, i=1)
+    if i > length(arg)
+        resize!(arg, i)
+    end
+    arg[i] = r
+end
 
 # accessor functions
 assignnr(::LiteralSpec) = false, 0

@@ -5,7 +5,7 @@ using Test, Scanf
 # pointer
 @testset "%p" begin
     rp = Ref{Ptr{Nothing}}()
-    @sscanf("0x42      ", "%4p", rp)
+    @scanf("0x42      ", "%4p", rp)
     @test rp[] == Ptr{Nothing}(UInt(0x42))
 end
 
@@ -79,10 +79,10 @@ end
 
 # character sets
 @testset "character set [" begin
-    f1 = Scanf.Format("%10[a-c]")
-    f2 = Scanf.Format("%10[abc]")
-    f3 = Scanf.Format("%10[abcx-y]")
-    res = "abbbcbbcbadabbdbbabbbann"
+    f1 = Scanf.Format("%10[a-c ]")
+    f2 = Scanf.Format("%10[abc ]")
+    f3 = Scanf.Format("%10[abcx-y ]")
+    res = " abbcbbcbadabbdbbabbbann"
     ra = Ref{String}()
     @test scanf(res, f1, ra) == 1 && ra[] == res[1:10]
     @test scanf(res, f2, ra) == 1 && ra[] == res[1:10]
@@ -93,7 +93,7 @@ end
     f1 = Scanf.Format("%10[^A-A]")
     f2 = Scanf.Format("%10[^A-B]")
     f3 = Scanf.Format("%10[^A-BX]")
-    res = "abbbcb Abadabbdbbabbbann"
+    res = " abbcb Abadabbdbbabbbann"
     ra = Ref{String}()
     @test scanf(res, f1, ra) == 1 && ra[] == res[1:7]
     @test scanf(res, f2, ra) == 1 && ra[] == res[1:7]
@@ -108,13 +108,13 @@ end
 
 @testset "single characters" begin
     rc = Ref{Char}()
-    r = @sscanf("a%bX", "a%%b%c", rc)
+    r = @scanf("a%bX", "a%%b%c", rc)
     @test rc[] == 'X'
 end
 
 @testset "multiple characters" begin
     rc = Vector{Char}(undef, 0)
-    r = @sscanf("abXYZ", "ab%3c", rc)
+    r = @scanf("abXYZ", "ab%3c", rc)
     @test rc == ['X', 'Y', 'Z']
 end
 
@@ -124,7 +124,7 @@ end
     ra = Ref{String}()
     rb = Ref{String}()
 
-    r = @sscanf("Hällo\u1680heimør", "%s%s", ra, rb)
+    r = @scanf("Hällo\u1680heimør", "%s%s", ra, rb)
     @test r == 2
     @test ra[] == "Hällo"
     @test rb[] == "heimør"
@@ -133,14 +133,15 @@ end
 # position
 @testset "%n" begin
     rn = Ref{Int}()
-    @test @sscanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == 1
+    @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == 1
     @test rn[] == 9
 end
 
 # basics
 @testset "basics" begin
     ra = Ref{Int}()
-    @test @sscanf("%15", "%%%d", ra) == 1
+    @test_throws ArgumentError try @eval @scanf(1, 2, 3); catch ex; rethrow(ex.error); end
+    @test @scanf("%15", "%%%d", ra) == 1
     @test ra[] == 15
     @test_throws ArgumentError Scanf.Format("")
     @test_throws ArgumentError Scanf.Format("%+")
@@ -173,9 +174,9 @@ end
     x = Ref{Int}()
     rs = Ref{String}()
     ri = Ref{Int}()
-    @test (@sscanf("1234", "%3d4%n", ri, x); x[] == 4)
-    @test (@sscanf("😉", "%s%n", rs, x); x[] == 4)
-    @test (@sscanf("1234 ", "%s%n", rs, x); x[] == 4)
+    @test (@scanf("1234", "%3d4%n", ri, x); x[] == 4)
+    @test (@scanf("😉", "%s%n", rs, x); x[] == 4)
+    @test (@scanf("1234 ", "%s%n", rs, x); x[] == 4)
 end
 
 @testset "show specifiers" begin
