@@ -563,8 +563,7 @@ end
             j += assign(fi)
         end
     end
-    @label BREAK
-    return j
+    @label BREAK; return j
 end
 
 # utility functions
@@ -597,8 +596,8 @@ Base.string(f::LiteralSpec) = string('"', f.string, '"')
 Base.show(io::IO, f::AbstractSpec) = print(io, string(f))
 
 # reconstruct internals of %[...]
-showset(s::AbstractString) = isempty(s) ? "1-0" : s
 showset(s::UnitRange) = "$(Char(first(s)))-$(Char(last(s)))"
+
 showset(t::Tuple{}) = ""
 function showset(t::Tuple{String,Vararg})
     s = t[1]
@@ -606,7 +605,11 @@ function showset(t::Tuple{String,Vararg})
     b, s = special(Char(CSCLOSE), s)
     string(b, s, showset.(t[2:end])..., m)
 end
+
 showset(t::Tuple) = string(showset.(t)...)
+
+showset(s::AbstractString) = isempty(s) ? "1-0" : s
+
 function special(x::Char, s::AbstractString)
     if occursin(x, s)
         string(x), filter(!isequal(x), s)

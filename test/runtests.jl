@@ -180,8 +180,15 @@ end
 end
 
 @testset "show specifiers" begin
-    f = Scanf.format"%dABC%[abc]%[^abc] %[B-AC]"
-    @test sprint(show, f.formats) == "(%d, \"ABC\", %[abc], %[^abc], %*_, %[C])"
+    f = Scanf.format"%dABC%[a-cA-C]%[^]a-cx] %[]B-Aa-zC-]%[B-A]"
+    @test sprint(show, f.formats) == "(%d, \"ABC\", %[a-cA-C], %[^]xa-c], %*_, %[]Ca-z-], %[1-0])"
+end
+
+@testset "scanf from stdin" begin
+    f1() = scanf(Scanf.format"abc")
+    f2() = begin @scanf "abc" end
+    @test redirect_stdin(f1, devnull) == -1
+    @test_broken redirect_stdin(f2, devnull) == -1
 end
 
 end # @testset "Scanf"

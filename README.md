@@ -4,7 +4,7 @@
 [![Coverage](https://codecov.io/gh/KlausC/Scanf.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/KlausC/Scanf.jl)
 
 Scanf scans UTF8-encoded input streams or strings and creates output data according to a format string.
-It tries to mimic the behaviour of the C-fuction with the same name.
+It tries to mimic the behaviour of the C-function with the same name.
 
 ## Features
 
