@@ -158,9 +158,9 @@ end
 
 @testset "default arguments" begin
     def = (1, 2.0, "x", 'y')
-    r, i, f, s, c = @scanf("X", "%i%f%s%c", def...)
-    @test r == 0
-    @test (i, f, s, c) == def
+    r, i, f, s, c = @scanf("42X", "%i%f%s%c", def...)
+    @test r == 1
+    @test (i, f, s, c) == (42, def[2:end]...)
 end
 
 # failing literal match consumes all matching characters
