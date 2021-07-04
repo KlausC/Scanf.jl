@@ -563,7 +563,7 @@ end
             j += assign(fi)
         end
     end
-    @label BREAK; return j, Tuple(res)
+    @label BREAK; return tuple(j, res...)
 end
 
 # utility functions

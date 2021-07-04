@@ -69,7 +69,7 @@ end
 @testset "%i follow up" for (inp, rr, a, b) in [("Z", 0, 0, ""), ("0", 1, 0, ""), ("0x", 1, 0, ""), ("0xZ", 2, 0, "Z")]
     f = Scanf.format"%i%s"
     ri = Ref{Int}(a)
-    r, (x, y) = scanf(inp, f, ri, String)
+    r, x, y = scanf(inp, f, ri, String)
     @test r == rr
     @test r < 1 || ri[] == a == x
     @test r < 2 || b == y
@@ -93,7 +93,7 @@ end
     f3 = Scanf.Format("%10[^A-BX]")
     res = " abbcb Abadabbdbbabbbann"
     ra = Ref{String}()
-    @test scanf(res, f1, ra)[1] == 1 && ra[] == res[1:7]
+    @test ((r, a) = scanf(res, f1, ra); r == 1) && a == res[1:7]
     @test scanf(res, f2, ra)[1] == 1 && ra[] == res[1:7]
     @test scanf(res, f3, ra)[1] == 1 && ra[] == res[1:7]
 end
@@ -105,19 +105,19 @@ end
 
 @testset "single characters" begin
     rc = Ref{Char}()
-    r, (c,) = @scanf("a%bX", "a%%b%c", rc)
+    r, c = @scanf("a%bX", "a%%b%c", rc)
     @test c == 'X' == rc[]
 end
 
 @testset "multiple characters" begin
-    r, (cc,) = @scanf("abXYZ", "ab%3c", Char[])
+    r, cc = @scanf("abXYZ", "ab%3c", Char[])
     @test ['X', 'Y', 'Z'] == cc
 end
 
 
 # string
 @testset "strings" begin
-    r, (a, b) = @scanf("Hällo\u1680heimør", "%s%s", String, String)
+    r, a, b = @scanf("Hällo\u1680heimør", "%s%s", String, String)
     @test r == 2
     @test "Hällo" == a
     @test "heimør" == b
@@ -126,7 +126,7 @@ end
 # position
 @testset "%n" begin
     rn = Ref{Int}()
-    @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == (1, (9,))
+    @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == (1, 9)
     @test rn[] == 9
 end
 
@@ -134,7 +134,7 @@ end
 @testset "basics" begin
     ra = Ref{Int}()
     @test_throws ArgumentError try @eval @scanf(1, 2, 3); catch ex; rethrow(ex.error); end
-    @test @scanf("%15", "%%%d", ra) == (1, (15,))
+    @test @scanf("%15", "%%%d", ra) == (1, 15)
     @test ra[] == 15
     @test_throws ArgumentError Scanf.Format("")
     @test_throws ArgumentError Scanf.Format("%+")
@@ -158,7 +158,7 @@ end
 
 @testset "default arguments" begin
     def = (1, 2.0, "x", 'y')
-    r, (i, f, s, c) = @scanf("X", "%i%f%s%c", def...)
+    r, i, f, s, c = @scanf("X", "%i%f%s%c", def...)
     @test r == 0
     @test (i, f, s, c) == def
 end

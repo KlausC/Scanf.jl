@@ -8,21 +8,21 @@ It tries to mimic the behaviour of the C-function with the same name.
 
 ## Features
 
-Scanf provides the macro `r, (a,...) = @scanf([io, ] "%format", args...)`
-and the function `r, (a,...) = scanf(io, f::Scanf.Format, args...)`.
+Scanf provides the macro `r, a,... = @scanf([io, ] "%format", args...)`
+and the function `r, a,... = scanf(io, f::Scanf.Format, args...)`.
 
 The format string must be a string literal, which is evaluated once at macro expansion time.
 
 Alternatively `f = Scanf.format"%format_string"` creates a format object, which can be used in the function call.
 
-The arguments are of type `T`, `Ref{T}`, or `Vector{T}` where `T` is a concrete type to determine the output type.
+The arguments may also be default values of types `Real`, `AbstractChar`, `AbstractString`.
 
-They may also be default values of type `Integer`, `AbstractFloat`, `Char`, `AbstractString`.
+They may also have of type `T`, `Ref{T}`, or `Vector{T}` where `T` is a concrete type to determine the output type.
 
-All output data are returned in a tuple after the number of assigned values. If a value cannot be parsed, either
-the default value or `nothing` is assigned.
+All output data are returned as a tuple including the number of assigned values at first. If a value cannot be parsed, either
+the default value is assigned. In the case of no value is in arg, the default value is derived form `T`.
 
-Additionally they are stored in the `Ref` or `Vector` objects.
+If the corresponding arg is a `Ref` or `Vector` object, the output value is stored in it. 
 
 The format strings follow the definition of GNU-scanf [manual page scanf](https://www.man7.org/linux/man-pages/man3/scanf.3.html)
 with some adaptations:
