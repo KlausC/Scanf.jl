@@ -156,6 +156,13 @@ end
     @test_throws ArgumentError scanf("", f)
 end
 
+@testset "default arguments" begin
+    def = (1, 2.0, "x", 'y')
+    r, (i, f, s, c) = @scanf("X", "%i%f%s%c", def...)
+    @test r == 0
+    @test (i, f, s, c) == def
+end
+
 # failing literal match consumes all matching characters
 @testset "literal string" begin
     io = IOBuffer("AÖÜdef")

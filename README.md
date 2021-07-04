@@ -15,8 +15,13 @@ The format string must be a string literal, which is evaluated once at macro exp
 
 Alternatively `f = Scanf.format"%format_string"` creates a format object, which can be used in the function call.
 
-The arguments are of type `T`, `Ref{T}`, or `Vector{T}` where `T` is a concrete type. 
-All output data are returned in a tuple after the number of assigned values.
+The arguments are of type `T`, `Ref{T}`, or `Vector{T}` where `T` is a concrete type to determine the output type.
+
+They may also be default values of type `Integer`, `AbstractFloat`, `Char`, `AbstractString`.
+
+All output data are returned in a tuple after the number of assigned values. If a value cannot be parsed, either
+the default value or `nothing` is assigned.
+
 Additionally they are stored in the `Ref` or `Vector` objects.
 
 The format strings follow the definition of GNU-scanf [manual page scanf](https://www.man7.org/linux/man-pages/man3/scanf.3.html)

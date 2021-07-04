@@ -101,7 +101,7 @@ Return the number of assigned arguments.
 """
 function scanf end
 
-scanf(io::IO, f::Format, args::Union{Ref,AbstractVector,Type}...) = scanner(io, f, args...)
+scanf(io::IO, f::Format, args...) = scanner(io, f, args...)
 scanf(f::Format, args...) = scanf(stdin, f, args...)
 scanf(str::AbstractString, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
@@ -533,11 +533,11 @@ end
 end
 
 # call the format specifiers aligned with the IO stream
-@inline function scanner(io::IO, f::Format, args...)
+@inline function scanner(io::IO, f::Format, args::Union{Ref,AbstractVector,Type,Integer,AbstractChar,AbstractString,AbstractFloat}...)
     n = length(args)
     m = countspecs(f)
     n == m || argmismatch(m, n)
-    res = fill!(Vector{Any}(undef, m), nothing)
+    res = Any[valuefor(x) for x in args]
     EOF = -1
     eof(io) && return EOF, Tuple(res)
     pos = 1
@@ -568,6 +568,13 @@ end
 
 # utility functions
 
+# default value for types
+valuefor(r::Ref{T}) where T = valuefor(T)
+valuefor(v::AbstractVector{T}) where T<:AbstractChar = similar(v, 0)
+valuefor(::Type{T}) where T<:Union{Real,Ptr,Char} = T(0)
+valuefor(::Type{T}) where T<:AbstractString = T("")
+valuefor(a::T) where T<:Union{Integer,AbstractChar,AbstractFloat,AbstractString} = a
+
 # assign value to reference or vector element
 function assignto!(arg::Ref, res, j, r, i=1)
     if i == 1
@@ -584,6 +591,9 @@ function assignto!(arg::AbstractVector, res, j, r, i=1)
 end
 function assignto!(::Type{T}, res, j, r, i=1) where T
     res[j] = T(r)
+end
+function assignto!(::Any, res, j, r, i=1)
+    res[j] = r
 end
 
 # accessor functions
