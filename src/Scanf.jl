@@ -386,7 +386,7 @@ end
                 base = 16
                 skip(io, 1)
                 l += 1
-            elseif base == nothing
+            elseif base === nothing
                 digits = OCTAL
                 base = 8
             end

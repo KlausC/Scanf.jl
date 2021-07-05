@@ -210,12 +210,13 @@ using Test, Scanf
     end
 
     @testset "scanf from stdin" begin
-        file = tempname(cleanup = true)
-        write(file, "abc42")
         ri = Ref{Int}()
         f1() = scanf(Scanf.format"abc%i", ri)
         f2() = @scanf "abc%i" ri
 
+        file = tempname(cleanup = true)
+        write(file, "abc42")
+        
         io = open(file)
         @test redirect_stdin(f1, io)[1] == 1
         close(io)
