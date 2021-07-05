@@ -409,8 +409,11 @@ end
             deleteat!(b, 1)
         end
         r = String(b)
-        x = parse(S, r, base=base)
-        if S <: Unsigned && negate
+        x = tryparse(S, r, base=base)
+        if x === nothing
+            x = typemax(S)
+            negate && S <: Signed && ( x = typemin(S))
+        elseif S <: Unsigned && negate
             x = -x
         end
         assignto!(arg[j], res, j, x)
@@ -443,8 +446,12 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        S = inttype(eltype(arg[j]))
-        assignto!(arg[j], res, j, parse(S, r, base=16))
+        S = UInt
+        s = tryparse(S, r, base=16)
+        if s === nothing
+            s = typemax(S)
+        end
+        assignto!(arg[j], res, j, s)
     end
     pos + l, l > 0
 end
@@ -460,6 +467,8 @@ end
     x_sep = 0x02
     x_exp = 0x04
     x_base = 0x08
+    x_nsign = 0x10
+    x_nexp = 0x20
     l = 0
     out = IOBuffer()
     status = x_sign  | x_sep | x_base
@@ -476,7 +485,10 @@ end
             status = (status | x_exp) & ~(x_base | x_sign)
         elseif b in digits
             status = (status | x_exp ) & ~(x_base | x_sign) 
-        elseif b in b"+-" && (status & x_sign) != 0
+        elseif b == UInt8('-') && (status & x_sign) != 0
+            status |= ifelse(status & x_base == 0, x_nexp , x_nsign)
+            status = status & ~x_sign
+        elseif b == UInt8('+') && (status & x_sign) != 0
             status = status & ~x_sign
         elseif b == UInt8('.') && (status & x_sep) != 0
             status = status & ~(x_base | x_sign | x_sep)
@@ -492,8 +504,13 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        A = eltype(arg[j])
-        assignto!(arg[j], res, j, parse(float(A), r))
+        A = float(eltype(arg[j]))
+        s = tryparse(A, r)
+        if s === nothing
+            s = ifelse(status & x_nexp != 0, zero(A), A(Inf))
+            (status & x_nsign != 0) && (s = -s)
+        end
+        assignto!(arg[j], res, j, s)
     end
     pos + l, l > 0
 end
@@ -576,7 +593,7 @@ valuefor(::Type{T}) where T<:AbstractString = T("")
 valuefor(a::T) where T<:Union{Integer,AbstractChar,AbstractFloat,AbstractString} = a
 
 # assign value to reference or vector element
-function assignto!(arg::Ref, res, j, r, i=1)
+function assignto!(arg::Base.RefValue, res, j, r, i=1)
     if i == 1
         arg[] = r
     end
@@ -592,8 +609,8 @@ end
 function assignto!(::Type{T}, res, j, r, i=1) where T
     res[j] = T(r)
 end
-function assignto!(::Any, res, j, r, i=1)
-    res[j] = r
+function assignto!(a::Any, res, j, r, i=1)
+    res[j] = oftype(a, r)
 end
 
 # accessor functions
