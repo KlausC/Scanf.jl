@@ -446,7 +446,7 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        S = UInt
+        S = inttype(arg[j])
         s = tryparse(S, r, base=16)
         if s === nothing
             s = typemax(S)
@@ -707,7 +707,7 @@ inttype(::Type{<:Float32}) = Int32
 inttype(::Type{<:Float16}) = Int16
 inttype(::Type{<:BigFloat}) = BigInt
 inttype(::Type{T}) where T<:Integer = T
-inttype(::Type{<:Ptr}) = UInt
+inttype(::Union{Ptr,Type{<:Ptr},Ref{<:Ptr}}) = UInt
 inttype(::Type) = Int
 
 # peek 2 bytes
