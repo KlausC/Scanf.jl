@@ -194,23 +194,25 @@ function Format(f::AbstractString)
                 pos += 1
                 pos > len && break
             end
-            # parse length modifiers (ignored)
+            # type modifier characters (ignored)
             if b == UInt8('h') || b == UInt8('l')
                 prev = b
                 b = bytes[pos]
                 pos += 1
-                if b == prev
+                if b == prev # cases "ll" and "hh"
                     pos > len && throw(ArgumentError("invalid format string: '$f'"))
                     b = bytes[pos]
                     pos += 1
                 end
-            elseif b in b"Ljqtz"
+            elseif b in b"Ljqtz" # more type modifiers (ignored)
                 b = bytes[pos]
                 pos += 1
             end
-            # parse type
-            if b in b"diouxXDOUeEfFgGaAcCsSpn"
-                type = Val{Char(b)}
+            # parse conversion specifier
+            if b in b"diouxXcspn" # uper case variants are invalid
+                type = Val{lowercase(Char(b))}
+            elseif b in b"eEfFgGaA"
+                type = Val{Char('f')}
             elseif b == CSOPEN
                 txt = "["
                 start = pos
@@ -227,10 +229,10 @@ function Format(f::AbstractString)
                 (xpos === nothing || start >= xpos ) &&  throw(ArgumentError("invalid format string '$f', after '$txt]' a Char(CSCLOSE) is missing"))
                 charset = view(bytes, start:xpos-1)   
                 pos = xpos + 1
+                type = Val{Char(b)}
             else
-                 throw(ArgumentError("invalid format string: '$f', invalid type specifier: '$(Char(b))'"))
+                 throw(ArgumentError("invalid format string: '$f', invalid conversion specifier: '$(Char(b))'"))
             end
-            type = Val{Char(b)}
         else # format contains a WS character
             type = Whitespace
             assign = false
