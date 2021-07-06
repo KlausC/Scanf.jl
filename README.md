@@ -70,4 +70,22 @@ Base.RefValue{Int64}(13)
 julia> b
 " This is a prime number"
 
+# collect data in a happy tuple
+julia> r, t... = @scanf "1 2 3 4 \u4119" "%d%u%e%x%s" 0 UInt 0.0 Int ""
+(5, 1, 0x0000000000000002, 3.0, 4, "䄙")
+
+julia> r
+5
+
+julia> t
+(1, 0x0000000000000002, 3.0, 4, "䄙")
+
+# use maximal number of assigned specifiers
+julia> r, t... = scanf(join(1:510, " "), Scanf.Format("%d%*d" ^ 255), fill(Int, 255)...);
+
+julia> r
+255
+
+julia> t == ((1:2:510)...,)
+true
 ```

@@ -271,8 +271,9 @@ using Test, Scanf
 
     @testset "convert to different type" begin
         res = "-1.5e+3"
-        @test ((r, a) = @scanf(res, "%f", ""); r == 1) && a == res
-        @test ((r, a) = @scanf(res, "%f", Int); r == 1) && a == -1500
+        f = Scanf.format"%f"
+        @test ((r, a) = scanf(res, f, ""); r == 1) && a == res
+        @test ((r, a) = scanf(res, f, Int); r == 1) && a == -1500
     end
 
 end # @testset "Scanf"
