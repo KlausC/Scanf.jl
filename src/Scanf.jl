@@ -20,7 +20,7 @@ const CSMINUS = UInt8('-')
 
 # format specifier categories
 const Ints = Union{Val{'d'}, Val{'i'}, Val{'u'}, Val{'x'}, Val{'X'}, Val{'o'}}
-const Floats = Union{Val{'e'}, Val{'E'}, Val{'f'}, Val{'F'}, Val{'g'}, Val{'G'}, Val{'a'}, Val{'A'}}
+const Floats = Val{'f'}
 const Chars = Union{Val{'c'}, Val{'C'}}
 const Strings = Union{Val{'s'}, Val{'S'}}
 const Pointer = Val{'p'}
@@ -47,12 +47,12 @@ Fields are the various modifiers allowed for various format specifiers.
 """
 struct Spec{T} <: AbstractSpec # T => %type => Val{'type'}
     assign::UInt8
-    width::UInt8
+    width::Int32
 end
 
 struct CharsetSpec{T,S} <: AbstractSpec
     assign::UInt8
-    width::Int
+    width::Int32
     set::S
 end
 
@@ -170,7 +170,7 @@ function Format(f::AbstractString)
     len = length(bytes)
     fmts = AbstractSpec[]
     pos, b = pushliteral!(fmts, f, bytes, 1)
-    ac = 0
+    ac = 0 # count number of assigning specifiers
 
     while pos <= len || b == SKIP
         assign = true
@@ -194,13 +194,15 @@ function Format(f::AbstractString)
                 pos += 1
                 pos > len && break
             end
+            0 <= width <= typemax(Int32) || throw(ArgumentError("invalid format string: \"$f\", width not in 1..$(typemax(Int32))"))
             # type modifier characters (ignored)
             if b == UInt8('h') || b == UInt8('l')
                 prev = b
+                pos > len && throw(ArgumentError("incomplete format string: \"$f\""))
                 b = bytes[pos]
                 pos += 1
                 if b == prev # cases "ll" and "hh"
-                    pos > len && throw(ArgumentError("invalid format string: '$f'"))
+                    pos > len && throw(ArgumentError("incomplete format string: \"$f\""))
                     b = bytes[pos]
                     pos += 1
                 end
@@ -222,16 +224,18 @@ function Format(f::AbstractString)
                     txt = "[^"
                     start += 1
                 end
-                xpos === nothing && throw(ArgumentError("invalid format string '$f', after '$txt' a Char(CSCLOSE) is missing"))
+                xpos === nothing &&
+                    throw(ArgumentError("invalid format string \"$f\", after '$txt' a Char(CSCLOSE) is missing"))
                 if bytes[start] == CSCLOSE # first character after "[" or "[^"
                     xpos = findnext(isequal(CSCLOSE), bytes, start+1)
                 end
-                (xpos === nothing || start >= xpos ) &&  throw(ArgumentError("invalid format string '$f', after '$txt]' a Char(CSCLOSE) is missing"))
+                (xpos === nothing || start >= xpos ) &&
+                    throw(ArgumentError("invalid format string \"$f\", after '$txt]' a Char(CSCLOSE) is missing"))
                 charset = view(bytes, start:xpos-1)   
                 pos = xpos + 1
                 type = Val{Char(b)}
             else
-                 throw(ArgumentError("invalid format string: '$f', invalid conversion specifier: '$(Char(b))'"))
+                 throw(ArgumentError("invalid format string: \"$f\", invalid conversion specifier: '$(Char(b))'"))
             end
         else # format contains a WS character
             type = Whitespace
@@ -239,6 +243,7 @@ function Format(f::AbstractString)
         end
         ac += assign
         ass = ifelse(assign, ac, 0)
+        ass <= 255 || throw(ArgumentError("invalid format string: \"$f\", too many assignable conversion specifiers"))
         push!(fmts, make_spec(type, ass, width, charset))
         pos, b = pushliteral!(fmts, f, bytes, pos)
     end
@@ -254,7 +259,7 @@ end
         pos += 1
         if b == ESC
             pos > len && throw(ArgumentError("incomplete format string: '$f'"))
-            if bytes[pos] == ESC
+            if bytes[pos] == ESC # "%%" will be removed in LiteralSpec
                 pos += 1
             else
                 break

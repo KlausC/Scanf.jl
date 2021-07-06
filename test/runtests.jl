@@ -160,10 +160,14 @@ using Test, Scanf
         @test @scanf("%15", "%%%d", ra) == (1, 15)
         @test ra[] == 15
         @test_throws ArgumentError Scanf.Format("")
+        @test_throws ArgumentError Scanf.Format("%")
+        @test_throws ArgumentError Scanf.Format("%l")
+        @test_throws ArgumentError Scanf.Format("%hh")
+        @test_throws ArgumentError Scanf.Format("%hhU")
         @test_throws ArgumentError Scanf.Format("%+")
         @test_throws ArgumentError Scanf.Format("%.")
         @test_throws ArgumentError Scanf.Format("%.0")
-        @test length(Scanf.Format("%%").formats) == 1
+        @test Scanf.Format("%%").formats[1].string == "%"
         @test_throws ArgumentError Scanf.Format("%y%d")
         @test_throws ArgumentError Scanf.Format("%\u00d0%d")
         @test_throws ArgumentError Scanf.Format("%\u0f00%d")
@@ -177,6 +181,9 @@ using Test, Scanf
         @test Scanf.Format(f) === f
         @test Scanf.format"%d " == f
         @test_throws ArgumentError scanf("", f)
+        @test Scanf.Format("%d" ^ 255) isa Scanf.Format
+        @test_throws ArgumentError Scanf.Format("%d" ^ 256)
+        @test_throws ArgumentError Scanf.Format("%98798728797879d")
     end
 
     @testset "default arguments" begin
@@ -260,6 +267,12 @@ using Test, Scanf
         input = "0x12341234abcdabcd0"
         res = T(typemax(UInt))
         @test ((r, a) = @scanf(input, "%p", T); r == 1) && isequal(a, T(res))
+    end
+
+    @testset "convert to different type" begin
+        res = "-1.5e+3"
+        @test ((r, a) = @scanf(res, "%f", ""); r == 1) && a == res
+        @test ((r, a) = @scanf(res, "%f", Int); r == 1) && a == -1500
     end
 
 end # @testset "Scanf"
