@@ -330,7 +330,9 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        assignto!(arg[j], res, j, r)
+        S = outtype(arg[j])
+        x = scanf_parse(S, r)
+        assignto!(arg[j], res, j, x)
     end
     return pos, l > 0
 end
@@ -350,7 +352,10 @@ end
         l += n
     end
     if assign && l > 0
-        assignto!(arg[j], res, j, String(take!(out)))
+        r = String(take!(out))
+        S = outtype(arg[j])
+        x = scanf_parse(S, r)
+        assignto!(arg[j], res, j, x)
     end
     pos + l, l > 0
 end
@@ -403,19 +408,9 @@ end
         end
     end
     if assign && l > 0
-        S = inttype(eltype(arg[j]))
-        b = take!(out)
-        if sig && S <: Unsigned
-            deleteat!(b, 1)
-        end
-        r = String(b)
-        x = tryparse(S, r, base=base)
-        if x === nothing
-            x = typemax(S)
-            negate && S <: Signed && ( x = typemin(S))
-        elseif S <: Unsigned && negate
-            x = -x
-        end
+        S = inttype(outtype(arg[j]))
+        r = String(take!(out))
+        x = scanf_parse(S, r, base=base)
         assignto!(arg[j], res, j, x)
     end
     pos + l, l > 0
@@ -446,7 +441,7 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        S = inttype(arg[j])
+        S = UInt
         s = tryparse(S, r, base=16)
         if s === nothing
             s = typemax(S)
@@ -504,24 +499,50 @@ end
     end
     if assign && l > 0
         r = String(take!(out))
-        A = float(eltype(arg[j]))
-        s = tryparse(A, r)
-        if s === nothing
-            s = ifelse(status & x_nexp != 0, zero(A), A(Inf))
-            (status & x_nsign != 0) && (s = -s)
-        end
+        A = floattype(outtype(arg[j]))
+        A <: Integer && ( A = float(A) )
+        s = scanf_parse(A, r, negx=status & x_nexp != 0)
         assignto!(arg[j], res, j, s)
     end
     pos + l, l > 0
 end
 
 # position counter spec
-function fmt(io, pos, arg, res, spec::Spec{PositionCounter})
+@inline function fmt(io, pos, arg, res, spec::Spec{PositionCounter})
     assign, j = assignnr(spec)
     if assign
         assignto!(arg[j], res, j, pos - 1)
     end
     pos, true
+end
+
+@inline function scanf_parse(::Type{S}, r::String; negx::Bool=false, base=nothing) where S<:AbstractString
+    r
+end
+
+@inline function scanf_parse(::Type{A}, r::AbstractString; base=nothing, negx::Bool=false) where A<:AbstractFloat
+    s = tryparse(A, r)
+    if s === nothing
+        s = ifelse(negx, zero(A), typemax(A))
+        r[1] == '-' && (s = -s)
+    end
+    s
+end
+
+@inline function scanf_parse(::Type{S}, r::String; negx::Bool=false, base=nothing) where S<:Integer
+    sig = r[1] in "+-"
+    negate = r[1] == '-'
+    if sig && S <: Unsigned
+        r = SubString(r, 2:length(r))
+    end
+    x = tryparse(S, r, base=base)
+    if x === nothing
+        x = typemax(S)
+        negate && S <: Signed && ( x = typemin(S))
+    elseif negate && S <: Unsigned
+        x = -x
+    end
+    x
 end
 
 # skip WS characters in io stream
@@ -702,15 +723,20 @@ basespec(::Type{<:DecBases}) = 10, DECIMAL
 basespec(::Type) = nothing, DECIMAL
 
 # type conversion hints for integer specs
+outtype(::T) where T = outtype(T)
+outtype(::Type{Base.RefValue{T}}) where T = T
+outtype(::Type{<:Ptr}) = UInt
+outtype(::Type{T}) where T = T
+
 inttype(::Type{<:Float64}) = Int64
 inttype(::Type{<:Float32}) = Int32
 inttype(::Type{<:Float16}) = Int16
 inttype(::Type{<:BigFloat}) = BigInt
-inttype(::Type{T}) where T<:Integer = T
-inttype(::Union{Ptr,Type{<:Ptr},Ref{<:Ptr}}) = UInt
-inttype(::Type) = Int
-
+inttype(::Type{T}) where T = T
+floattype(::Type{T}) where T<:Integer = float(T)
+floattype(::Type{T}) where T = T
 # peek 2 bytes
+
 @inline function peek2(io)
     try
         u = peek(io, UInt16)

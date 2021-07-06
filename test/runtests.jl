@@ -77,7 +77,7 @@ using Test, Scanf
 
     @testset "convert integer to other type" begin
         f = Scanf.format"%i"
-        @test_throws MethodError scanf("14", f, String)
+        @test scanf("  14", f, String) == (1, "14")
     end
 
     @testset "%i follow up" for (inp, rr, a, b) in [
