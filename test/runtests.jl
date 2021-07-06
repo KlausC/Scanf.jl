@@ -129,8 +129,15 @@ using Test, Scanf
     end
 
     @testset "multiple characters" begin
+        v = Char[]
+        r, cc = @scanf("abXYZ", "ab%3c", v)
+        @test ['X', 'Y', 'Z'] == cc == v
         r, cc = @scanf("abXYZ", "ab%3c", Char[])
         @test ['X', 'Y', 'Z'] == cc
+        r, cc = @scanf("abXYZ", "ab%3c", Char)
+        @test 'X' == cc
+        r, cc = @scanf("abXYZ", "ab%3c", String)
+        @test "XYZ" == cc
     end
 
 

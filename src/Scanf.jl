@@ -41,27 +41,42 @@ const HEXADECIMAL = b"0123456789ABCDEFabcdef"
 abstract type AbstractSpec end
 
 """
+    Spec{T}
+
 Typed representation of a format specifier.
 
 `T` is a `Val{'X'}`, where `X` is a valid format specifier character.
 
-Fields are the various modifiers allowed for various format specifiers.
+Special case `X == '_'` represents whitespace (not assigning)
+
+See also `CharsetSpec` and `LiteralSpec`.
 """
-struct Spec{T} <: AbstractSpec # T => %type => Val{'type'}
+struct Spec{T<:Val} <: AbstractSpec # T => %type => Val{'type'}
     assign::ARGNUM_TYPE
     width::WIDTH_TYPE
 end
 
-struct CharsetSpec{T,S} <: AbstractSpec
+"""
+    CharsetSpec{T,S}
+
+Format specifier representing a character set (inclusive or exclusive)
+"""
+struct CharsetSpec{T<:Val,S} <: AbstractSpec
     assign::ARGNUM_TYPE
     width::WIDTH_TYPE
     set::S
 end
 
-struct LiteralSpec{T} <: AbstractSpec
-    string::T
+"""
+    LiteralSpec{S<:AbstractString}
+
+Non-assigning Format specifier representing a literal matching string.
+"""
+struct LiteralSpec{S} <: AbstractSpec
+    string::S
 end
 
+# replace double %% by single % 
 function LiteralSpec(str::T) where T<:AbstractString
     if contains(str, "%%")
         str = replace(str, "%%" => "%")
@@ -75,7 +90,7 @@ end
 """
     Scanf.Format(format_str)
 
-Create a C scanf-compatible format object that can be used for parse formated texts.
+Create a C scanf-compatible format object that can be used for parse formatted texts.
 
 The input `format_str` can include any valid format specifier character and modifiers.
 
@@ -85,6 +100,8 @@ formatted string directly from `io`.
 
 For convenience, the `Scanf.format"..."` string macro form can be used for building
 a `Scanf.Format` object at macro-expansion-time.
+
+The `@scanf` macro converts a literal string into a `Scanf.Format` implicitly.
 """
 struct Format{S, T}
     str::S # original full format string as CodeUnits
@@ -92,14 +109,16 @@ struct Format{S, T}
 end
 
 """
-    Scanf.format(b::String, f::Scanf.Format, args::Ref...)
-    Scanf.format([io::IO,] f::Scanf.Format, args::Ref...)
+    Scanf.scanf(b::String, f::Scanf.Format, args...)
+    Scanf.scanf([io::IO,] f::Scanf.Format, args...)
 
-Apply a Scanf format object `f` to provided string, store results in `args`.
+Apply a Scanf format object `f` to provided String
 (1st method), or scan directly from an `io` object (2nd method). See [`@scanf`](@ref)
-for more details on C `scanf` support. `io` defaults to `stdin`.
+for more details on C `scanf` support.
+`io` defaults to `stdin`.
+The args determine the type and default value for the output data.
 
-Return the number of assigned arguments.
+Return the number of assigned arguments, followed by the assigned output data.
 """
 function scanf end
 
@@ -304,8 +323,12 @@ end
 @inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T <: Chars}
     assign, j = assignnr(spec); width = spec.width
     width = ifelse(width == 0, 1, width)
+    eof(io) && return pos, false
 
-    eof(io) && read(io, Char)
+    if assign
+        S = outtype(arg[j])
+        v = S <: Char ? arg[j] : Char[]
+    end
     i = 0
     start = pos
     while !eof(io) && i < width
@@ -313,13 +336,16 @@ end
         isvalid(Char, r) || break
         if assign
             i += 1
-            assignto!(arg[j], res, j, r, i)
+            assignto!(v, res, j, r, i)
         end
         n = ncodeunits(r)
         skip(io, n)
         pos += n
     end
-    assign && arg isa AbstractVector && resize!(arg, i)
+    if assign && v isa AbstractVector
+        resize!(v, i)
+        v != arg[j] && assignto!(S, res, j, v)
+    end
     return pos, pos > start
 end
 
@@ -637,6 +663,11 @@ function assignto!(arg::AbstractVector, res, j, r, i=1)
     arg[i] = r
     res[j] = arg
 end
+function assignto!(::Type{Char}, res, j, r, i=1)
+    if i == 1
+        res[j] = length(r) >= 1 ? r[1] : ' '
+    end
+end
 function assignto!(::Type{T}, res, j, r, i=1) where T
     res[j] = T(r)
 end
@@ -734,6 +765,7 @@ basespec(::Type) = nothing, DECIMAL
 
 # type conversion hints for integer specs
 outtype(::T) where T = outtype(T)
+outtype(::Type{<:AbstractVector{T}}) where T = T
 outtype(::Type{Base.RefValue{T}}) where T = T
 outtype(::Type{<:Ptr}) = UInt
 outtype(::Type{T}) where T = T
