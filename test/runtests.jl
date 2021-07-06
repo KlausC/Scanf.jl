@@ -181,9 +181,14 @@ using Test, Scanf
         @test Scanf.Format(f) === f
         @test Scanf.format"%d " == f
         @test_throws ArgumentError scanf("", f)
-        @test Scanf.Format("%d" ^ 255) isa Scanf.Format
-        @test_throws ArgumentError Scanf.Format("%d" ^ 256)
-        @test_throws ArgumentError Scanf.Format("%98798728797879d")
+        
+        toobig_argnum = (Int64(typemax(Scanf.ARGNUM_TYPE)) + 1)
+        @test Scanf.Format("%d" ^ (toobig_argnum - 1)) isa Scanf.Format
+        @test_throws ArgumentError Scanf.Format("%d" ^ toobig_argnum)
+
+        toobig_width = (Int64(typemax(Scanf.WIDTH_TYPE)) + 1)
+        @test Scanf.Format("%$(toobig_width-1)d") isa Scanf.Format
+        @test_throws ArgumentError Scanf.Format("%$(toobig_width)d")
     end
 
     @testset "default arguments" begin

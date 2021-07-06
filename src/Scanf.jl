@@ -4,6 +4,8 @@ using Base.Ryu
 
 export @scanf, @sscanf, scanf
 
+const ARGNUM_TYPE = UInt16 
+const WIDTH_TYPE = UInt32
 # whitespace characters in format strings
 const WHITESPACE = b" \n\t\r\f\v"
 # format escape character
@@ -46,13 +48,13 @@ Typed representation of a format specifier.
 Fields are the various modifiers allowed for various format specifiers.
 """
 struct Spec{T} <: AbstractSpec # T => %type => Val{'type'}
-    assign::UInt8
-    width::Int32
+    assign::ARGNUM_TYPE
+    width::WIDTH_TYPE
 end
 
 struct CharsetSpec{T,S} <: AbstractSpec
-    assign::UInt8
-    width::Int32
+    assign::ARGNUM_TYPE
+    width::WIDTH_TYPE
     set::S
 end
 
@@ -194,7 +196,7 @@ function Format(f::AbstractString)
                 pos += 1
                 pos > len && break
             end
-            0 <= width <= typemax(Int32) || throw(ArgumentError("invalid format string: \"$f\", width not in 1..$(typemax(Int32))"))
+            0 <= width <= typemax(WIDTH_TYPE) || throw(ArgumentError("invalid format string: \"$f\", width not in 1..$(typemax(Int32))"))
             # type modifier characters (ignored)
             if b == UInt8('h') || b == UInt8('l')
                 prev = b
@@ -243,13 +245,14 @@ function Format(f::AbstractString)
         end
         ac += assign
         ass = ifelse(assign, ac, 0)
-        ass <= 255 || throw(ArgumentError("invalid format string: \"$f\", too many assignable conversion specifiers"))
+        ass <= typemax(ARGNUM_TYPE) || throw(ArgumentError("invalid format string: \"$f\", too many assignable conversion specifiers"))
         push!(fmts, make_spec(type, ass, width, charset))
         pos, b = pushliteral!(fmts, f, bytes, pos)
     end
     return Format(bytes, Tuple(fmts))
 end
 
+# consume bytes up to next % or whitespace and insert LiteralSpec 
 @inline function pushliteral!(fmts, f, bytes, pos)
     len = length(bytes)
     start = pos
