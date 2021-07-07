@@ -9,6 +9,20 @@ using Test, Scanf
         @test rp[] == Ptr{Nothing}(UInt(0x42))
     end
 
+    # whitespace is squeezed
+    @testset "whitespace" begin
+        f = Scanf.format"  "
+        @test length(f.formats) == 1
+    end
+
+    # %% is maintained before WS
+    @testset "%% before WS" begin
+        f = Scanf.format"%% "
+        @test length(f.formats) == 2
+        @test f.formats[1] isa Scanf.LiteralSpec
+        @test f.formats[2] isa Scanf.Spec{Val{Char(Scanf.SKIP)}}
+    end
+
     # floating point numbers
     @testset "float to $T" for T in (Float64, Float32, Float16, BigFloat)
         f1 = Scanf.Format("%g")

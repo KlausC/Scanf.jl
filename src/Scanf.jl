@@ -295,22 +295,28 @@ end
     len = length(bytes)
     start = pos
     b = 0x00
+    j = -1
     while pos <= len
         b = bytes[pos]
         pos += 1
         if b == ESC
-            pos > len && throw(ArgumentError("incomplete format string: '$f'"))
+            pos > len && throw(ArgumentError("incomplete format string: \"$f\""))
             if bytes[pos] == ESC # "%%" will be removed in LiteralSpec
                 pos += 1
             else
+                j = pos - 2
                 break
             end
         elseif b in WHITESPACE
+            j = pos - 2
+            while pos <= len && bytes[pos] in WHITESPACE
+                pos += 1
+            end
             b = SKIP
             break
         end
     end
-    j = pos - 1 - (b == ESC || b == SKIP)
+    j = j < 0 ? pos - 1 : j
     start <= j && push!(fmts, LiteralSpec(SubString(f, start:j)))
     return pos, b
 end
