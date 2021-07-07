@@ -4,6 +4,7 @@ using Base.Ryu
 
 export @scanf, @sscanf, scanf
 
+const EOF = -1
 const ARGNUM_TYPE = UInt16 
 const WIDTH_TYPE = UInt32
 # whitespace characters in format strings
@@ -526,6 +527,14 @@ end
         elseif b in expch && (status & x_exp) != 0
             status = (status & ~(x_base | x_exp | x_sep)) | x_sign
             digits = DECIMAL
+        elseif b in b"iI"
+            n = expect(io, out, b"INFINITY", 3)
+            l = ( n == 3 || n == 8 ) ? l + n : 0
+            break
+        elseif b in b"nN"
+            n = expect(io, out, b"NAN", 3)
+            l = n == 3 ? l + n : 0
+            break
         else
             break
         end
@@ -541,6 +550,21 @@ end
         assignto!(arg[j], res, j, s)
     end
     pos + l, l > 0
+end
+
+@inline function expect(io::IO, out::IO, bytes::AbstractVector{UInt8}, n)
+    l = 1
+    while l <= length(bytes) && !eof(io)
+        b = peek(io)
+        if b == bytes[l] || b == bytes[l] + (UInt8('a') - UInt8('A'))
+            l <= n && write(out, b)
+            skip(io, 1)
+            l += 1
+        else
+            break
+        end
+    end
+    return l - 1
 end
 
 # position counter spec
@@ -612,8 +636,7 @@ end
     m = countspecs(f)
     n == m || argmismatch(m, n)
     res = Any[valuefor(x) for x in args]
-    EOF = -1
-    eof(io) && return EOF, Tuple(res)
+    eof(io) && return EOF, res...
     pos = 1
 
     # for each format, scan arg and next substring

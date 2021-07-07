@@ -25,6 +25,27 @@ using Test, Scanf
         end
     end
 
+    # floating point nan and infinity
+    @testset "float to $T" for T in (Float64, Float32, Float16, BigFloat)
+        f = Scanf.format"%f%n"
+        @testset "$inp" for (inp, res, rr, nn) in (
+            ("InfX", T(Inf), 2, 3),
+            ("-InFX", T(-Inf), 2, 4),
+            ("infiNITYX", T(Inf), 2, 8),
+            ("NANX", T(NaN), 2, 3),
+            ("-nanX", T(-NaN), 2, 4),
+            ("infiX", T(0.0), 0, 0),
+            ("naX", T(0.0), 0, 0),
+        )
+            io = IOBuffer(inp)
+            r, x, n = scanf(io, f, T(0.0), 0)
+            @test r == rr
+            @test n == nn
+            @test x === res || T <: BigFloat && (x == res || isnan(x) && isnan(res))
+            @test peek(io, Char) == 'X'
+        end
+    end
+
     # integers
     @testset "integer %i to $T" for T in (UInt64, UInt32, UInt16)
         f1 = Scanf.Format("%i")
