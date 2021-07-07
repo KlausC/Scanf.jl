@@ -5,7 +5,7 @@ using Base.Ryu
 export @scanf, @sscanf, scanf
 
 const EOF = -1
-const ARGNUM_TYPE = UInt16 
+const ARGNUM_TYPE = UInt16
 const WIDTH_TYPE = UInt32
 # whitespace characters in format strings
 const WHITESPACE = b" \n\t\r\f\v"
@@ -22,18 +22,18 @@ const CSNEG = UInt8('^')
 const CSMINUS = UInt8('-')
 
 # format specifier categories
-const Ints = Union{Val{'d'}, Val{'i'}, Val{'u'}, Val{'x'}, Val{'X'}, Val{'o'}}
+const Ints = Union{Val{'d'},Val{'i'},Val{'u'},Val{'x'},Val{'X'},Val{'o'}}
 const Floats = Val{'f'}
-const Chars = Union{Val{'c'}, Val{'C'}}
-const Strings = Union{Val{'s'}, Val{'S'}}
+const Chars = Union{Val{'c'},Val{'C'}}
+const Strings = Union{Val{'s'},Val{'S'}}
 const Pointer = Val{'p'}
-const HexBases = Union{Val{'x'}, Val{'X'}, Val{'a'}, Val{'A'}}
-const DecBases = Union{Val{'d'}, Val{'u'}}
+const HexBases = Union{Val{'x'},Val{'X'},Val{'a'},Val{'A'}}
+const DecBases = Union{Val{'d'},Val{'u'}}
 const OctBases = Val{'o'}
 const IntBases = Val{'i'}
 const PositionCounter = Val{'n'}
 const Whitespace = Val{Char(SKIP)}
-const CharSets = Union{Val{Char(CSOPEN)}, Val{Char(CSNEG)}}
+const CharSets = Union{Val{Char(CSOPEN)},Val{Char(CSNEG)}}
 const EscapeChar = Val{Char(ESC)}
 
 const DECIMAL = b"0123456789"
@@ -78,7 +78,7 @@ struct LiteralSpec{S} <: AbstractSpec
 end
 
 # replace double %% by single % 
-function LiteralSpec(str::T) where T<:AbstractString
+function LiteralSpec(str::T) where {T<:AbstractString}
     if contains(str, "%%")
         str = replace(str, "%%" => "%")
         S = typeof(str)
@@ -104,7 +104,7 @@ a `Scanf.Format` object at macro-expansion-time.
 
 The `@scanf` macro converts a literal string into a `Scanf.Format` implicitly.
 """
-struct Format{S, T}
+struct Format{S,T}
     str::S # original full format string as CodeUnits
     formats::T # Tuple of Specs (including whitespace specs and literal specs)
 end
@@ -159,7 +159,7 @@ julia> rb[]
 """
 macro scanf(arg, args...)
     n = length(args)
-    if arg isa String && !(n > 0 && args[1] isa String) 
+    if arg isa String && !(n > 0 && args[1] isa String)
         fmt = arg
         io = :stdin
     elseif n >= 1 && args[1] isa String
@@ -216,7 +216,11 @@ function Format(f::AbstractString)
                 pos += 1
                 pos > len && break
             end
-            0 <= width <= typemax(WIDTH_TYPE) || throw(ArgumentError("invalid format string: \"$f\", width not in 1..$(typemax(Int32))"))
+            0 <= width <= typemax(WIDTH_TYPE) || throw(
+                ArgumentError(
+                    "invalid format string: \"$f\", width not in 1..$(typemax(Int32))",
+                ),
+            )
             # type modifier characters (ignored)
             if b == UInt8('h') || b == UInt8('l')
                 prev = b
@@ -246,18 +250,28 @@ function Format(f::AbstractString)
                     txt = "[^"
                     start += 1
                 end
-                xpos === nothing &&
-                    throw(ArgumentError("invalid format string \"$f\", after '$txt' a Char(CSCLOSE) is missing"))
+                xpos === nothing && throw(
+                    ArgumentError(
+                        "invalid format string \"$f\", after '$txt' a Char(CSCLOSE) is missing",
+                    ),
+                )
                 if bytes[start] == CSCLOSE # first character after "[" or "[^"
-                    xpos = findnext(isequal(CSCLOSE), bytes, start+1)
+                    xpos = findnext(isequal(CSCLOSE), bytes, start + 1)
                 end
-                (xpos === nothing || start >= xpos ) &&
-                    throw(ArgumentError("invalid format string \"$f\", after '$txt]' a Char(CSCLOSE) is missing"))
-                charset = view(bytes, start:xpos-1)   
+                (xpos === nothing || start >= xpos) && throw(
+                    ArgumentError(
+                        "invalid format string \"$f\", after '$txt]' a Char(CSCLOSE) is missing",
+                    ),
+                )
+                charset = view(bytes, start:xpos-1)
                 pos = xpos + 1
                 type = Val{Char(b)}
             else
-                 throw(ArgumentError("invalid format string: \"$f\", invalid conversion specifier: '$(Char(b))'"))
+                throw(
+                    ArgumentError(
+                        "invalid format string: \"$f\", invalid conversion specifier: '$(Char(b))'",
+                    ),
+                )
             end
         else # format contains a WS character
             type = Whitespace
@@ -265,7 +279,11 @@ function Format(f::AbstractString)
         end
         ac += assign
         ass = ifelse(assign, ac, 0)
-        ass <= typemax(ARGNUM_TYPE) || throw(ArgumentError("invalid format string: \"$f\", too many assignable conversion specifiers"))
+        ass <= typemax(ARGNUM_TYPE) || throw(
+            ArgumentError(
+                "invalid format string: \"$f\", too many assignable conversion specifiers",
+            ),
+        )
         push!(fmts, make_spec(type, ass, width, charset))
         pos, b = pushliteral!(fmts, f, bytes, pos)
     end
@@ -292,7 +310,7 @@ end
             break
         end
     end
-    j = pos - 1 - ( b == ESC || b == SKIP)
+    j = pos - 1 - (b == ESC || b == SKIP)
     start <= j && push!(fmts, LiteralSpec(SubString(f, start:j)))
     return pos, b
 end
@@ -321,8 +339,9 @@ end
 end
 
 # match character(s)
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T <: Chars}
-    assign, j = assignnr(spec); width = spec.width
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Chars}
+    assign, j = assignnr(spec)
+    width = spec.width
     width = ifelse(width == 0, 1, width)
     eof(io) && return pos, false
 
@@ -351,9 +370,10 @@ end
 end
 
 # string spec
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T <: Strings}
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Strings}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec); width = spec.width
+    assign, j = assignnr(spec)
+    width = spec.width
     l = 0
     out = IOBuffer()
     while (width == 0 || l < width) && !eof(io)
@@ -376,7 +396,8 @@ end
 
 # charset specs
 @inline function fmt(io, pos, arg, res, spec::CharsetSpec)
-    assign, j = assignnr(spec); width = spec.width
+    assign, j = assignnr(spec)
+    width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     l = 0
     out = IOBuffer()
@@ -398,9 +419,10 @@ end
 end
 
 # integer specs
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where T <: Ints
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Ints}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec); width = spec.width
+    assign, j = assignnr(spec)
+    width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     l = 0
     sig = false
@@ -447,16 +469,17 @@ end
     if assign && l > 0
         S = inttype(outtype(arg[j]))
         r = String(take!(out))
-        x = scanf_parse(S, r, base=base)
+        x = scanf_parse(S, r, base = base)
         assignto!(arg[j], res, j, x)
     end
     pos + l, l > 0
 end
 
 # pointer spec
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where T <: Pointer
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Pointer}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec); width = spec.width
+    assign, j = assignnr(spec)
+    width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     rv = (pos, false)
     eof(io) && return rv
@@ -479,7 +502,7 @@ end
     if assign && l > 0
         r = String(take!(out))
         S = UInt
-        s = tryparse(S, r, base=16)
+        s = tryparse(S, r, base = 16)
         if s === nothing
             s = typemax(S)
         end
@@ -489,9 +512,10 @@ end
 end
 
 # floating point spec
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where T<:Floats
+@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Floats}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec); width = spec.width
+    assign, j = assignnr(spec)
+    width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     digits = DECIMAL
     expch = b"eEfF"
@@ -503,7 +527,7 @@ end
     x_nexp = 0x20
     l = 0
     out = IOBuffer()
-    status = x_sign  | x_sep | x_base
+    status = x_sign | x_sep | x_base
     while l < width && !eof(io)
         b1, b2 = peek2(io)
         b = c = b1
@@ -516,9 +540,9 @@ end
             c = b2
             status = (status | x_exp) & ~(x_base | x_sign)
         elseif b in digits
-            status = (status | x_exp ) & ~(x_base | x_sign) 
+            status = (status | x_exp) & ~(x_base | x_sign)
         elseif b == UInt8('-') && (status & x_sign) != 0
-            status |= ifelse(status & x_base == 0, x_nexp , x_nsign)
+            status |= ifelse(status & x_base == 0, x_nexp, x_nsign)
             status = status & ~x_sign
         elseif b == UInt8('+') && (status & x_sign) != 0
             status = status & ~x_sign
@@ -529,7 +553,7 @@ end
             digits = DECIMAL
         elseif b in b"iI"
             n = expect(io, out, b"INFINITY", 3)
-            l = ( n == 3 || n == 8 ) ? l + n : 0
+            l = (n == 3 || n == 8) ? l + n : 0
             break
         elseif b in b"nN"
             n = expect(io, out, b"NAN", 3)
@@ -545,8 +569,8 @@ end
     if assign && l > 0
         r = String(take!(out))
         A = floattype(outtype(arg[j]))
-        A <: Integer && ( A = float(A) )
-        s = scanf_parse(A, r, negx=status & x_nexp != 0)
+        A <: Integer && (A = float(A))
+        s = scanf_parse(A, r, negx = status & x_nexp != 0)
         assignto!(arg[j], res, j, s)
     end
     pos + l, l > 0
@@ -576,11 +600,21 @@ end
     pos, true
 end
 
-@inline function scanf_parse(::Type{S}, r::String; negx::Bool=false, base=nothing) where S<:AbstractString
+@inline function scanf_parse(
+    ::Type{S},
+    r::String;
+    negx::Bool = false,
+    base = nothing,
+) where {S<:AbstractString}
     r
 end
 
-@inline function scanf_parse(::Type{A}, r::AbstractString; base=nothing, negx::Bool=false) where A<:AbstractFloat
+@inline function scanf_parse(
+    ::Type{A},
+    r::AbstractString;
+    base = nothing,
+    negx::Bool = false,
+) where {A<:AbstractFloat}
     s = tryparse(A, r)
     if s === nothing
         s = ifelse(negx, zero(A), typemax(A))
@@ -589,16 +623,21 @@ end
     s
 end
 
-@inline function scanf_parse(::Type{S}, r::String; negx::Bool=false, base=nothing) where S<:Integer
+@inline function scanf_parse(
+    ::Type{S},
+    r::String;
+    negx::Bool = false,
+    base = nothing,
+) where {S<:Integer}
     sig = r[1] in "+-"
     negate = r[1] == '-'
     if sig && S <: Unsigned
         r = SubString(r, 2:length(r))
     end
-    x = tryparse(S, r, base=base)
+    x = tryparse(S, r, base = base)
     if x === nothing
         x = typemax(S)
-        negate && S <: Signed && ( x = typemin(S))
+        negate && S <: Signed && (x = typemin(S))
     elseif negate && S <: Unsigned
         x = -x
     end
@@ -607,7 +646,7 @@ end
 
 # skip WS characters in io stream
 @inline function skip_ws(io, pos)
-    while !eof(io) 
+    while !eof(io)
         b = peek(io)
         n = _ncodeunits(b)
         if n == 1
@@ -631,7 +670,19 @@ end
 end
 
 # call the format specifiers aligned with the IO stream
-@inline function scanner(io::IO, f::Format, args::Union{Ref,AbstractVector,Type,Integer,AbstractChar,AbstractString,AbstractFloat}...)
+@inline function scanner(
+    io::IO,
+    f::Format,
+    args::Union{
+        Ref,
+        AbstractVector,
+        Type,
+        Integer,
+        AbstractChar,
+        AbstractString,
+        AbstractFloat,
+    }...,
+)
     n = length(args)
     m = countspecs(f)
     n == m || argmismatch(m, n)
@@ -645,7 +696,8 @@ end
     N = length(formats)
     j = 0
     UNROLL_UPTO = 8
-    Base.@nexprs 8 i -> begin if N >= i
+    Base.@nexprs 8 i -> begin
+        if N >= i
             fi = formats[i]
             pos, succ = fmt(io, pos, args, res, fi)
             succ || @goto BREAK
@@ -660,41 +712,42 @@ end
             j += assign(fi)
         end
     end
-    @label BREAK; return tuple(j, res...)
+    @label BREAK
+    return tuple(j, res...)
 end
 
 # utility functions
 
 # default value for types
-valuefor(r::Ref{T}) where T = valuefor(T)
-valuefor(v::AbstractVector{T}) where T<:AbstractChar = similar(v, 0)
-valuefor(::Type{T}) where T<:Union{Real,Ptr,Char} = T(0)
-valuefor(::Type{T}) where T<:AbstractString = T("")
-valuefor(a::T) where T<:Union{Integer,AbstractChar,AbstractFloat,AbstractString} = a
+valuefor(r::Ref{T}) where {T} = valuefor(T)
+valuefor(v::AbstractVector{T}) where {T<:AbstractChar} = similar(v, 0)
+valuefor(::Type{T}) where {T<:Union{Real,Ptr,Char}} = T(0)
+valuefor(::Type{T}) where {T<:AbstractString} = T("")
+valuefor(a::T) where {T<:Union{Integer,AbstractChar,AbstractFloat,AbstractString}} = a
 
 # assign value to reference or vector element
-function assignto!(arg::Base.RefValue, res, j, r, i=1)
+function assignto!(arg::Base.RefValue, res, j, r, i = 1)
     if i == 1
         arg[] = r
     end
     res[j] = r
 end
-function assignto!(arg::AbstractVector, res, j, r, i=1)
+function assignto!(arg::AbstractVector, res, j, r, i = 1)
     if i > length(arg)
         resize!(arg, i)
     end
     arg[i] = r
     res[j] = arg
 end
-function assignto!(::Type{Char}, res, j, r, i=1)
+function assignto!(::Type{Char}, res, j, r, i = 1)
     if i == 1
         res[j] = length(r) >= 1 ? r[1] : ' '
     end
 end
-function assignto!(::Type{T}, res, j, r, i=1) where T
+function assignto!(::Type{T}, res, j, r, i = 1) where {T}
     res[j] = T(r)
 end
-function assignto!(a::Any, res, j, r, i=1)
+function assignto!(a::Any, res, j, r, i = 1)
     res[j] = oftype(a, r)
 end
 
@@ -706,12 +759,27 @@ assign(spec::AbstractSpec) = assignnr(spec)[1]
 # showing formats
 
 # recreate the format specifier string from a typed Spec
-Base.string(f::Spec{Val{T}}; modifier::String="") where {T} =
+Base.string(f::Spec{Val{T}}; modifier::String = "") where {T} =
     string(Char(ESC), !assign(f) ? "*" : "", f.width > 0 ? f.width : "", modifier, T)
-Base.string(f::CharsetSpec{Val{Char(CSOPEN)}}; modifier::String="") =
-    string(Char(ESC), !assign(f) ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), showset(f.set), Char(CSCLOSE))
-Base.string(f::CharsetSpec{Val{Char(CSNEG)}}; modifier::String="") =
-    string(Char(ESC), !assign(f) ? "*" : "", f.width > 0 ? f.width : "", modifier, Char(CSOPEN), Char(CSNEG), showset(f.set), Char(CSCLOSE))
+Base.string(f::CharsetSpec{Val{Char(CSOPEN)}}; modifier::String = "") = string(
+    Char(ESC),
+    !assign(f) ? "*" : "",
+    f.width > 0 ? f.width : "",
+    modifier,
+    Char(CSOPEN),
+    showset(f.set),
+    Char(CSCLOSE),
+)
+Base.string(f::CharsetSpec{Val{Char(CSNEG)}}; modifier::String = "") = string(
+    Char(ESC),
+    !assign(f) ? "*" : "",
+    f.width > 0 ? f.width : "",
+    modifier,
+    Char(CSOPEN),
+    Char(CSNEG),
+    showset(f.set),
+    Char(CSCLOSE),
+)
 Base.string(f::LiteralSpec) = string('"', f.string, '"')
 
 Base.show(io::IO, f::AbstractSpec) = print(io, string(f))
@@ -771,14 +839,14 @@ function make_charset(cs::String)
             else
                 b = prevind(cs, j)
             end
-            push!(ch, SubString(cs,a:b))
+            push!(ch, SubString(cs, a:b))
             a = nextind(cs, k)
         end
     end
     push!(ch, SubString(cs, a:stop))
     str = String(unique(collect(string(ch...))))
-    isempty(ra) ? str : isempty(str) ? (length(ra) == 1 ? ra[1] : (ra...,)) : (str, ra...) 
-end     
+    isempty(ra) ? str : isempty(str) ? (length(ra) == 1 ? ra[1] : (ra...,)) : (str, ra...)
+end
 
 # bases for integer specs
 basespec(::Type{<:HexBases}) = 16, HEXADECIMAL
@@ -787,19 +855,19 @@ basespec(::Type{<:DecBases}) = 10, DECIMAL
 basespec(::Type) = nothing, DECIMAL
 
 # type conversion hints for integer specs
-outtype(::T) where T = outtype(T)
-outtype(::Type{<:AbstractVector{T}}) where T = T
-outtype(::Type{Base.RefValue{T}}) where T = T
+outtype(::T) where {T} = outtype(T)
+outtype(::Type{<:AbstractVector{T}}) where {T} = T
+outtype(::Type{Base.RefValue{T}}) where {T} = T
 outtype(::Type{<:Ptr}) = UInt
-outtype(::Type{T}) where T = T
+outtype(::Type{T}) where {T} = T
 
 inttype(::Type{<:Float64}) = Int64
 inttype(::Type{<:Float32}) = Int32
 inttype(::Type{<:Float16}) = Int16
 inttype(::Type{<:BigFloat}) = BigInt
-inttype(::Type{T}) where T = T
-floattype(::Type{T}) where T<:Integer = float(T)
-floattype(::Type{T}) where T = T
+inttype(::Type{T}) where {T} = T
+floattype(::Type{T}) where {T<:Integer} = float(T)
+floattype(::Type{T}) where {T} = T
 # peek 2 bytes
 
 @inline function peek2(io)
@@ -819,14 +887,14 @@ end
 @inline check_!in(c, set::AbstractString) = !occursin(c, set)
 @inline check_in(c, set::UnitRange) = in(UInt32(c), set)
 @inline check_!in(c, set::UnitRange) = !in(UInt32(c), set)
-@inline check_in(c, set::Tuple) = any(x->check_in(c, x), set)
-@inline check_!in(c, set::Tuple) = all(x->check_!in(c, x), set)
+@inline check_in(c, set::Tuple) = any(x -> check_in(c, x), set)
+@inline check_!in(c, set::Tuple) = all(x -> check_!in(c, x), set)
 
 # count number of assigning format specifiers in format
 countspecs(f::Format) = count(assign, f.formats)
 
 import Base: ==
-function ==(f::T, g::T) where T<:Format
+function ==(f::T, g::T) where {T<:Format}
     f.formats == g.formats
 end
 
@@ -835,7 +903,11 @@ end
 
 # error
 @noinline function argmismatch(a, b)
-    throw(ArgumentError("mismatch between # of format specifiers and provided args: $a != $b"))
+    throw(
+        ArgumentError(
+            "mismatch between # of format specifiers and provided args: $a != $b",
+        ),
+    )
 end
 
 end # module

@@ -209,13 +209,13 @@ using Test, Scanf
         @test Scanf.Format(f) === f
         @test Scanf.format"%d " == f
         @test_throws ArgumentError scanf("", f)
-        
+
         toobig_argnum = (Int64(typemax(Scanf.ARGNUM_TYPE)) + 1)
-        @test Scanf.Format("%d" ^ (toobig_argnum - 1)) isa Scanf.Format
-        @test_throws ArgumentError Scanf.Format("%d" ^ toobig_argnum)
+        @test Scanf.Format("%d"^(toobig_argnum - 1)) isa Scanf.Format
+        @test_throws ArgumentError Scanf.Format("%d"^toobig_argnum)
 
         toobig_width = (Int64(typemax(Scanf.WIDTH_TYPE)) + 1)
-        @test Scanf.Format("%$(toobig_width-1)d") isa Scanf.Format
+        @test Scanf.Format("%$(toobig_width - 1)d") isa Scanf.Format
         @test_throws ArgumentError Scanf.Format("%$(toobig_width)d")
     end
 
@@ -256,7 +256,7 @@ using Test, Scanf
 
         file = tempname(cleanup = true)
         write(file, "abc42")
-        
+
         io = open(file)
         @test redirect_stdin(f1, io)[1] == 1
         close(io)
