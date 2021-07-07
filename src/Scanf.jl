@@ -437,9 +437,7 @@ end
     b = peek(io)
     negate = false
     if b in b"+-"
-        skip(io, 1)
-        write(out, b)
-        l += 1
+        l = writeskip(io, out, b, l)
         negate = b == UInt('-')
         sig = true
     end
@@ -448,9 +446,7 @@ end
     if base === nothing || base == 16
         b = peek(io)
         if b == UInt('0')
-            skip(io, 1)
-            write(out, b)
-            l += 1
+            l = writeskip(io, out, b, l)
             if !eof(io) && peek(io) in b"xX"
                 digits = HEXADECIMAL
                 base = 16
@@ -465,9 +461,7 @@ end
     while l < width && !eof(io)
         b = peek(io)
         if b in digits
-            skip(io, 1)
-            write(out, b)
-            l += 1
+            l = writeskip(io, out, b, l)
         else
             break
         end
@@ -489,18 +483,18 @@ end
     width = ifelse(width == 0, typemax(Int), width)
     rv = (pos, false)
     eof(io) && return rv
-    b1, b2 = peek2(io)
-    b1 == UInt8('0') && b2 in b"xX" || return rv
-    skip(io, 2)
-    l = 2
     digits = HEXADECIMAL
     out = IOBuffer()
+    l = 0
     while l < width && !eof(io)
         b = peek(io)
-        if b in digits
-            skip(io, 1)
-            write(out, b)
-            l += 1
+        if l == 0 && b == UInt8('0')
+            l = writeskip(io, out, b, l)
+            if !eof(io) && ( b = peek(io)) in b"xX"
+                l = writeskip(io, out, b, l)
+            end
+        elseif b in digits
+            l = writeskip(io, out, b, l)
         else
             break
         end
@@ -508,7 +502,7 @@ end
     if assign && l > 0
         r = String(take!(out))
         S = UInt
-        s = tryparse(S, r, base = 16)
+        s = tryparse(S, r)
         if s === nothing
             s = typemax(S)
         end
@@ -535,16 +529,16 @@ end
     out = IOBuffer()
     status = x_sign | x_sep | x_base
     while l < width && !eof(io)
-        b1, b2 = peek2(io)
-        b = c = b1
-        if status & x_base != 0 && b == UInt8('0') && b2 in b"xX"
-            digits = HEXADECIMAL
-            expch = b"pP"
-            l += 1
-            skip(io, 1)
-            write(out, c)
-            c = b2
+        b = peek(io)
+        if status & x_base != 0 && b == UInt8('0')
+            l = writeskip(io, out, b, l)
+            if !eof(io) && (b = peek(io)) in b"xX"
+                digits = HEXADECIMAL
+                expch = b"pP"
+                l = writeskip(io, out, b, l)
+            end
             status = (status | x_exp) & ~(x_base | x_sign)
+            continue
         elseif b in digits
             status = (status | x_exp) & ~(x_base | x_sign)
         elseif b == UInt8('-') && (status & x_sign) != 0
@@ -568,9 +562,7 @@ end
         else
             break
         end
-        write(out, c)
-        skip(io, 1)
-        l += 1
+        l = writeskip(io, out, b, l)
     end
     if assign && l > 0
         r = String(take!(out))
@@ -673,6 +665,13 @@ end
         end
     end
     pos
+end
+
+# consume 1 byte
+@inline function writeskip(io, out, b, l)
+    write(out, b)
+    skip(io, 1)
+    l + 1
 end
 
 # call the format specifiers aligned with the IO stream
@@ -864,7 +863,6 @@ basespec(::Type) = nothing, DECIMAL
 outtype(::T) where {T} = outtype(T)
 outtype(::Type{<:AbstractVector{T}}) where {T} = T
 outtype(::Type{Base.RefValue{T}}) where {T} = T
-outtype(::Type{<:Ptr}) = UInt
 outtype(::Type{T}) where {T} = T
 
 inttype(::Type{<:Float64}) = Int64
@@ -874,17 +872,6 @@ inttype(::Type{<:BigFloat}) = BigInt
 inttype(::Type{T}) where {T} = T
 floattype(::Type{T}) where {T<:Integer} = float(T)
 floattype(::Type{T}) where {T} = T
-# peek 2 bytes
-
-@inline function peek2(io)
-    try
-        u = peek(io, UInt16)
-        v = ntoh(u)
-        UInt8(v >> 8), UInt8(v & 0x00ff)
-    catch
-        peek(io), 0xff
-    end
-end
 
 # check if character is in or not in charset
 @inline check_set(c::Char, spec::CharsetSpec{Val{Char(CSOPEN)}}) = check_in(c, spec.set)
