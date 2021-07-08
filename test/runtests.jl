@@ -60,6 +60,12 @@ using Test, Scanf
         end
     end
 
+    @testset "incomplete floats $inp" for inp in ("Z", "0xZ", ".Z", "e", "+e", "-e", "1eZ", "0E-Z")
+        io = IOBuffer(inp)
+        @test ( @scanf io "%f" 0.0 ) == (0, 0.0)
+        @test peek(io, Char) == inp[end]
+    end
+
     # integers
     @testset "integer %i to $T" for T in (UInt64, UInt32, UInt16)
         f1 = Scanf.Format("%i")
@@ -68,21 +74,23 @@ using Test, Scanf
             @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res)
         end
     end
-    @testset "integer %i to $T" for T in (
-        Int64,
-        Int32,
-        Int16,
-        BigInt,
-        Float64,
-        Float32,
-        Float16,
-        BigFloat,
-    )
+    sigreals = (Int64, Int32, Int16, BigInt, Float64, Float32, Float16, BigFloat)
+    @testset "integer %i to $T" for T in sigreals
         f1 = Scanf.Format("%i")
         ra = Ref{T}()
         @testset "$res" for res in ("+17", "-4711", "0x7ffe")
             @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res)
         end
+    end
+    @testset "incomplete integers $inp" for inp in ("Z", "0xZ", )
+        io = IOBuffer(inp)
+        @test ( @scanf io "%i" 0 ) == (0, 0)
+        @test peek(io) == UInt8('Z')
+    end
+    @testset "incomplete pointers $inp" for inp in ("Z", "0Z", "0XZ")
+        io = IOBuffer(inp)
+        @test ( @scanf io "%p" Ptr{Nothing}) == (0, Ptr{Nothing}(0))
+        @test peek(io) == UInt8('Z')
     end
 
     @testset "integer %i octal input" for T in (Int64,)
@@ -118,15 +126,13 @@ using Test, Scanf
     @testset "%i follow up" for (inp, rr, a, b) in [
         ("Z", 0, 0, ""),
         ("0", 1, 0, ""),
-        ("0x", 1, 0, ""),
-        ("0xZ", 2, 0, "Z"),
+        ("0x", 0, 0, ""),
+        ("0xZ", 0, 0, ""),
     ]
         f = Scanf.format"%i%s"
-        ri = Ref{Int}(a)
-        r, x, y = scanf(inp, f, ri, String)
+        r, x, y = scanf(inp, f, 42, String)
         @test r == rr
-        @test r < 1 || ri[] == a == x
-        @test r < 2 || b == y
+        @test r < 1 || a == x
     end
 
     # character sets

@@ -443,15 +443,18 @@ end
     end
     digits = DECIMAL
     base, digits = basespec(T)
+    ndig = 0
     if base === nothing || base == 16
         b = peek(io)
         if b == UInt('0')
+            ndig += 1
             l = writeskip(io, out, b, l)
             if !eof(io) && peek(io) in b"xX"
                 digits = HEXADECIMAL
                 base = 16
                 skip(io, 1)
                 l += 1
+                ndig = 0
             elseif base === nothing
                 digits = OCTAL
                 base = 8
@@ -461,18 +464,20 @@ end
     while l < width && !eof(io)
         b = peek(io)
         if b in digits
+            ndig += 1
             l = writeskip(io, out, b, l)
         else
             break
         end
     end
-    if assign && l > 0
+    succ = ndig > 0
+    if assign && succ
         S = inttype(outtype(arg[j]))
         r = String(take!(out))
         x = scanf_parse(S, r, base = base)
         assignto!(arg[j], res, j, x)
     end
-    pos + l, l > 0
+    pos + l, succ
 end
 
 # pointer spec
@@ -499,7 +504,8 @@ end
             break
         end
     end
-    if assign && l > 0
+    succ = l > 2
+    if assign && succ
         r = String(take!(out))
         S = UInt
         s = tryparse(S, r)
@@ -508,7 +514,7 @@ end
         end
         assignto!(arg[j], res, j, s)
     end
-    pos + l, l > 0
+    pos + l, succ
 end
 
 # floating point spec
@@ -523,11 +529,13 @@ end
     x_sep = 0x02
     x_exp = 0x04
     x_base = 0x08
-    x_nsign = 0x10
+    x_inexp = 0x10
     x_nexp = 0x20
+    x_mdigits = 0x40
+    x_edigits = 0x80
     l = 0
     out = IOBuffer()
-    status = x_sign | x_sep | x_base
+    status = x_sign | x_sep | x_base | x_edigits
     while l < width && !eof(io)
         b = peek(io)
         if status & x_base != 0 && b == UInt8('0')
@@ -536,44 +544,51 @@ end
                 digits = HEXADECIMAL
                 expch = b"pP"
                 l = writeskip(io, out, b, l)
+            else
+                status |= x_mdigits
             end
-            status = (status | x_exp) & ~(x_base | x_sign)
+            status = (status | x_exp | x_edigits) & ~(x_base | x_sign)
             continue
         elseif b in digits
-            status = (status | x_exp) & ~(x_base | x_sign)
+            status = (status | x_exp ) & ~(x_base | x_sign)
+            status |= (status & x_inexp != 0) ? x_edigits : x_mdigits
         elseif b == UInt8('-') && (status & x_sign) != 0
-            status |= ifelse(status & x_base == 0, x_nexp, x_nsign)
+            status |= ifelse(status & x_base == 0, x_nexp, 0)
             status = status & ~x_sign
         elseif b == UInt8('+') && (status & x_sign) != 0
             status = status & ~x_sign
         elseif b == UInt8('.') && (status & x_sep) != 0
             status = status & ~(x_base | x_sign | x_sep)
         elseif b in expch && (status & x_exp) != 0
-            status = (status & ~(x_base | x_exp | x_sep)) | x_sign
+            status = (status & ~(x_base | x_exp | x_edigits | x_sep)) | x_sign | x_inexp
             digits = DECIMAL
         elseif b in b"iI"
             n = expect(io, out, b"INFINITY", 3)
             l = (n == 3 || n == 8) ? l + n : 0
+            status |= x_mdigits | x_edigits
             break
         elseif b in b"nN"
             n = expect(io, out, b"NAN", 3)
             l = n == 3 ? l + n : 0
+            status |= x_mdigits | x_edigits
             break
         else
             break
         end
         l = writeskip(io, out, b, l)
     end
-    if assign && l > 0
+    succ = l > 0 && (status & x_mdigits != 0) && (status & x_edigits != 0)
+    if assign && succ
         r = String(take!(out))
         A = floattype(outtype(arg[j]))
         A <: Integer && (A = float(A))
         s = scanf_parse(A, r, negx = status & x_nexp != 0)
         assignto!(arg[j], res, j, s)
     end
-    pos + l, l > 0
+    pos + l, succ
 end
 
+# helpers for matching nan and inf
 @inline function expect(io::IO, out::IO, bytes::AbstractVector{UInt8}, n)
     l = 1
     while l <= length(bytes) && !eof(io)
@@ -598,6 +613,7 @@ end
     pos, true
 end
 
+# fmt helpers
 @inline function scanf_parse(
     ::Type{S},
     r::String;
