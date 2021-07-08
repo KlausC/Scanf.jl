@@ -4,9 +4,8 @@ using Test, Scanf
 
     # pointer
     @testset "%p" begin
-        rp = Ref{Ptr{Nothing}}()
-        @scanf("0x42      ", "%4p", rp)
-        @test rp[] == Ptr{Nothing}(UInt(0x42))
+        r, p = @scanf("0x42      ", "%4p", Ptr{Nothing})
+        @test p == Ptr{Nothing}(UInt(0x42))
     end
 
     # whitespace is squeezed
@@ -27,15 +26,14 @@ using Test, Scanf
     @testset "float to $T" for T in (Float64, Float32, Float16, BigFloat)
         f1 = Scanf.Format("%g")
         f2 = Scanf.Format("%4e")
-        ra = Ref{T}()
         @testset "$res" for res in (
             "-13",
             "99.76 ",
             "-12.749123479791234797123498781234981432e-4",
             "0x1.4711p2",
         )
-            @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res)
-            @test scanf(res, f2, ra)[1] == 1 && ra[] == parse(T, res[1:min(4, length(res))])
+            @test scanf(res, f1, T) == (1, parse(T, res))
+            @test scanf(res, f2, T) == (1, parse(T, res[1:min(4, length(res))]))
         end
     end
 
@@ -69,17 +67,15 @@ using Test, Scanf
     # integers
     @testset "integer %i to $T" for T in (UInt64, UInt32, UInt16)
         f1 = Scanf.Format("%i")
-        ra = Ref{T}()
         @testset "$res" for res in ("17", "4711", "0x7ffe")
-            @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res)
+            @test scanf(res, f1, T) == (1, parse(T, res))
         end
     end
     sigreals = (Int64, Int32, Int16, BigInt, Float64, Float32, Float16, BigFloat)
     @testset "integer %i to $T" for T in sigreals
         f1 = Scanf.Format("%i")
-        ra = Ref{T}()
         @testset "$res" for res in ("+17", "-4711", "0x7ffe")
-            @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res)
+            @test scanf(res, f1, T) == (1, parse(T, res))
         end
     end
     @testset "incomplete integers $inp" for inp in ("Z", "0xZ", )
@@ -94,27 +90,23 @@ using Test, Scanf
     end
 
     @testset "integer %i octal input" for T in (Int64,)
-        ra = Ref{T}()
-        @test scanf("0377", Scanf.Format("%i"), ra)[1] == 1 && ra[] == 255
+        @test scanf("0377", Scanf.Format("%i"), T) == (1, 255)
     end
     @testset "integer %i negated input" for T in (UInt64, UInt16)
-        ra = Ref{T}()
-        @test scanf("-99", Scanf.Format("%i"), ra)[1] == 1 && ra[] == -T(99)
+        @test scanf("-99", Scanf.Format("%i"), T) == (1, -T(99))
     end
 
     @testset "integer %o to $T" for T in (Int64, UInt64, Int32, UInt32, Int16, UInt16)
         f1 = Scanf.Format("%o")
-        ra = Ref{T}()
         @testset "$res" for res in ("17", "4711", "0377")
-            @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res, base = 8)
+            @test scanf(res, f1, T) == (1, parse(T, res, base = 8))
         end
     end
 
     @testset "integer %x to $T" for T in (Int64, UInt64, Int32, UInt32, Int16, UInt16)
         f1 = Scanf.Format("%x")
-        ra = Ref{T}()
         @testset "$res" for res in ("0x4711",)
-            @test scanf(res, f1, ra)[1] == 1 && ra[] == parse(T, res)
+            @test scanf(res, f1, T) == (1, parse(T, res))
         end
     end
 
@@ -141,10 +133,9 @@ using Test, Scanf
         f2 = Scanf.Format("%10[abc ]")
         f3 = Scanf.Format("%10[abcx-y ]")
         res = " abbcbbcbadabbdbbabbbann"
-        ra = Ref{String}()
-        @test scanf(res, f1, ra)[1] == 1 && ra[] == res[1:10]
-        @test scanf(res, f2, ra)[1] == 1 && ra[] == res[1:10]
-        @test scanf(res, f3, ra)[1] == 1 && ra[] == res[1:10]
+        @test scanf(res, f1, String) == (1, res[1:10])
+        @test scanf(res, f2, "") == (1, res[1:10])
+        @test scanf(res, f3, "") == (1, res[1:10])
     end
 
     @testset "character set ^" begin
@@ -152,10 +143,9 @@ using Test, Scanf
         f2 = Scanf.Format("%10[^A-B]")
         f3 = Scanf.Format("%10[^A-BX]")
         res = " abbcb Abadabbdbbabbbann"
-        ra = Ref{String}()
-        @test ((r, a) = scanf(res, f1, ra); r == 1) && a == res[1:7]
-        @test scanf(res, f2, ra)[1] == 1 && ra[] == res[1:7]
-        @test scanf(res, f3, ra)[1] == 1 && ra[] == res[1:7]
+        @test scanf(res, f1, "") == (1, res[1:7])
+        @test scanf(res, f2, String) == (1, res[1:7])
+        @test scanf(res, f3, "") == (1, res[1:7])
     end
 
     @testset "many arguments" begin
@@ -164,9 +154,8 @@ using Test, Scanf
     end
 
     @testset "single characters" begin
-        rc = Ref{Char}()
-        r, c = @scanf("a%bX", "a%%b%c", rc)
-        @test c == 'X' == rc[]
+        @test @scanf("a%bX", "a%%b%c", Char) == (1, 'X')
+        @test @scanf("a%bX", "a%%b%c", String) == (1, "X")
     end
 
     @testset "multiple characters" begin
@@ -181,7 +170,6 @@ using Test, Scanf
         @test "XYZ" == cc
     end
 
-
     # string
     @testset "strings" begin
         r, a, b = @scanf("Hällo\u1680heimør", "%s%s", String, String)
@@ -192,21 +180,17 @@ using Test, Scanf
 
     # position
     @testset "%n" begin
-        rn = Ref{Int}()
-        @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", rn) == (1, 9)
-        @test rn[] == 9
+        @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", 0) == (1, 9)
     end
 
     # basics
     @testset "basics" begin
-        ra = Ref{Int}()
         @test_throws ArgumentError try
             @eval @scanf(1, 2, 3)
         catch ex
             rethrow(ex.error)
         end
-        @test @scanf("%15", "%%%d", ra) == (1, 15)
-        @test ra[] == 15
+        @test @scanf("%15", "%%%d", Int) == (1, 15)
         @test_throws ArgumentError Scanf.Format("")
         @test_throws ArgumentError Scanf.Format("%")
         @test_throws ArgumentError Scanf.Format("%l")
@@ -254,13 +238,9 @@ using Test, Scanf
     end
 
     @testset "%n" begin
-        x = Ref{Int}()
-        rs = Ref{String}()
-        ri = Ref{Int}()
-        @test (@scanf("1234", "%3d4%n", ri, x); x[] == 4)
-        @test (@scanf("😉", "%s%n", rs, x);
-        x[] == 4)
-        @test (@scanf("1234 ", "%s%n", rs, x); x[] == 4)
+        @test @scanf("1234", "%3d4%n", Int, 0) == (2, 123, 4)
+        @test @scanf("😉", "%s%n", String, 0) == (2, "😉", 4)
+        @test @scanf("1234 ", "%s%n", String, 0) == (2, "1234", 4)
     end
 
     @testset "show specifiers" begin
@@ -270,19 +250,18 @@ using Test, Scanf
     end
 
     @testset "scanf from stdin" begin
-        ri = Ref{Int}()
-        f1() = scanf(Scanf.format"abc%i", ri)
-        f2() = @scanf "abc%i" ri
+        f1() = scanf(Scanf.format"abc%i", 0)
+        f2() = @scanf "abc%i" 0
 
         file = tempname(cleanup = true)
         write(file, "abc42")
 
         io = open(file)
-        @test redirect_stdin(f1, io)[1] == 1
+        @test redirect_stdin(f1, io) == (1, 42)
         close(io)
 
         io = open(file)
-        @test redirect_stdin(f2, io)[1] == 1
+        @test redirect_stdin(f2, io) == (1, 42)
         close(io)
     end
     @testset "overflow $T" for T in (Float64, Float32, Float16, BigFloat)

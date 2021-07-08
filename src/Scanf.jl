@@ -128,7 +128,7 @@ scanf(f::Format, args...) = scanf(stdin, f, args...)
 scanf(str::AbstractString, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
 """
-    @scanf([io:Union{IO,String}, ], "%Fmt", args::Ref...)
+    @scanf([io:Union{IO,String}, ], "%Fmt", args::...)
 
 Scan input stream or string of using C `scanf` style format specification string and assign values 
 to arguments.
@@ -138,23 +138,10 @@ Equivalent to `scanf(io, Scanf.format"%Fmt", args...)`.
 
 # Examples
 ```jldoctest
-refs = Ref{Float64}.(1:4)
-@scanf(%f%f%f%f, refs...)
+r, a... = @scanf("%f%f%f%f", zeros(4)...)
 
-julia> ra = Ref{Float64}()
-Base.RefValue{Float64}(6.8990893377741e-310)
-
-julia> rb = Ref{String}()
-Base.RefValue{String}(#undef)
-
-julia> @scanf "23.4 text" "%f %2s" ra rb
-2
-
-julia> ra[]
-23.4
-
-julia> rb[]
-"te"
+julia> r, a, b = @scanf "23.4 text" "%f %2s" Float64 String
+(2, 23.4, "te")
 ```
 """
 macro scanf(arg, args...)
@@ -695,13 +682,12 @@ end
     io::IO,
     f::Format,
     args::Union{
-        Ref,
-        AbstractVector,
         Type,
-        Integer,
+        Ptr,
+        Real,
         AbstractChar,
         AbstractString,
-        AbstractFloat,
+        AbstractVector{<:AbstractChar}
     }...,
 )
     n = length(args)
@@ -740,19 +726,12 @@ end
 # utility functions
 
 # default value for types
-valuefor(::Base.RefValue{T}) where {T} = valuefor(T)
 valuefor(v::AbstractVector{T}) where {T<:AbstractChar} = similar(v, 0)
 valuefor(::Type{T}) where {T<:Union{Real,Ptr,Char}} = T(0)
 valuefor(::Type{T}) where {T<:AbstractString} = T("")
 valuefor(a::T) where {T<:Union{Real,AbstractChar,AbstractString,Ptr}} = a
 
 # assign value to reference or vector element
-function assignto!(arg::Base.RefValue, res, j, r, i = 1)
-    if i == 1
-        arg[] = r
-    end
-    res[j] = r
-end
 function assignto!(arg::AbstractVector, res, j, r, i = 1)
     if i > length(arg)
         resize!(arg, i)
@@ -878,7 +857,6 @@ basespec(::Type) = nothing, DECIMAL
 # type conversion hints for integer specs
 outtype(::T) where {T} = outtype(T)
 outtype(::Type{<:AbstractVector{T}}) where {T} = T
-outtype(::Type{Base.RefValue{T}}) where {T} = T
 outtype(::Type{T}) where {T} = T
 
 inttype(::Type{<:Float64}) = Int64
