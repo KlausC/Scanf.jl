@@ -31,13 +31,22 @@ and the function `r, a,... = scanf(io, f::Scanf.Format, args...)`.
 
 The format string must be a string literal, which is evaluated once at macro expansion time.
 
-Alternatively `f = Scanf.format"%format_string"` creates a format object, which can be used in the function call.
+Alternatively `f = Scanf.format"%format_string"` or `f = Scanf.Format("format_string")` create a format object, which can be
+used in the function call.
 
 The arguments are default values of types `Real`, `AbstractChar`, `AbstractString`, `Ptr`, `AbstractVector{Char}`.
 
 They may also be concrete subtypes of `Real`, `AbstractChar`, `AbstractString`, `Ptr`.
 
-All output data are returned as a tuple including the number of assigned values at first. If a value cannot be parsed,
+Numeric format specifiers are compatible with numeric arguments and `String`. Conversion errors may happen (float => int).
+
+If the numeric arg type is not wide enough for the value, boundary values with the correct sign are stored (e.g. `Inf`, `-0.0`).
+
+Format specifiers `c`, `s`, `[` are all compatible with arguments `Char`, `Char[]`, and `String`.
+In case of `Char` the first character of a string is taken.
+
+All output data are returned as a tuple including the number of assigned values as the first element.
+If a value cannot be parsed,
 the default value is assigned. In the case of no value is in the corresponding element of `arg`, the default value is derived form `T`.
 
 If the default argument is a `Vector` object, the output values are additionally stored in it.
@@ -53,7 +62,7 @@ with some adaptations:
 
 + The `%n$...` form of format specifications is not supported.
 
-+ Optional type modifiers like `h`, `l`, `L` etc. are ignored; the target type is derived from the type of the corresponding default argument, instead.
++ Optional type modifiers like `h`, `l`, `L` etc. are ignored; the target type is derived from the corresponding default argument, instead.
 
 + for type specifier `%c`, without `width` specified, the corresponding argument must have type `Char` or `String`.
 
@@ -67,3 +76,8 @@ with some adaptations:
 + The return value of both calls is the amount of output arguments, followed by all output data, the trailing ones maybe default values.
  In contrast to C and C++, also the arguments for `%n` are counted. 
 
+### Limitations
+
++ the number of arguments is limited to `2^16-1`
+
++ the `width` field in conversion specifiers is limited to `2^16 - 1`

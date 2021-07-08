@@ -148,6 +148,13 @@ using Test, Scanf
         @test scanf(res, f3, "") == (1, res[1:7])
     end
 
+    @testset "string to Char" begin
+        @test @scanf("äbc", "%s", Char[]) == (1, ['ä', 'b', 'c'])
+        @test @scanf("äbc", "%[a-zäöü]", Char) == (1, 'ä')
+        @test @scanf("Äbc", "%[a-zäöü]", Char[]) == (0, Char[])
+        @test @scanf("Äbc", "%[a-zäöü]", Char) == (0, '\0')
+    end
+
     @testset "many arguments" begin
         f = Scanf.Format("%d%d%d%d%d%d%d%d%d%d ")
         @test scanf("1 2 3 4 5 6 7 8 9 10", f, fill(Int, 10)...)[1] == 10

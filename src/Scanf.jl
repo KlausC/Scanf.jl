@@ -602,11 +602,11 @@ end
 
 # fmt helpers
 @inline function scanf_parse(
-    ::Type{S},
+    ::Union{Type{<:AbstractString},Type{<:AbstractChar}},
     r::String;
     negx::Bool = false,
     base = nothing,
-) where {S<:AbstractString}
+)
     r
 end
 
@@ -732,11 +732,19 @@ valuefor(::Type{T}) where {T<:AbstractString} = T("")
 valuefor(a::T) where {T<:Union{Real,AbstractChar,AbstractString,Ptr}} = a
 
 # assign value to reference or vector element
-function assignto!(arg::AbstractVector, res, j, r, i = 1)
+function assignto!(arg::AbstractVector{T}, res, j, r::T, i = 1) where T
     if i > length(arg)
         resize!(arg, i)
     end
     arg[i] = r
+    res[j] = arg
+end
+function assignto!(arg::AbstractVector{<:AbstractChar}, res, j, r::AbstractString, i = 1)
+    i = length(r)
+    if i > length(arg)
+        resize!(arg, i)
+    end
+    arg .= collect(r)
     res[j] = arg
 end
 function assignto!(::Type{Char}, res, j, r, i = 1)
