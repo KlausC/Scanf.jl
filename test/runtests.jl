@@ -87,9 +87,9 @@ using Test, Scanf
         @test ( @scanf io "%i" 0 ) == (0, 0)
         @test peek(io) == UInt8('Z')
     end
-    @testset "incomplete pointers $inp" for inp in ("Z", "0Z", "0XZ")
+    @testset "incomplete pointers $inp $arg" for inp in ("Z", "0Z", "0XZ"), arg in (Ptr{String}, Ptr{String}(0))
         io = IOBuffer(inp)
-        @test ( @scanf io "%p" Ptr{Nothing}) == (0, Ptr{Nothing}(0))
+        @test ( @scanf io "%p" arg) == (0, Ptr{String}(0))
         @test peek(io) == UInt8('Z')
     end
 

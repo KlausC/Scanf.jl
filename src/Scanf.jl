@@ -740,11 +740,11 @@ end
 # utility functions
 
 # default value for types
-valuefor(r::Ref{T}) where {T} = valuefor(T)
+valuefor(::Base.RefValue{T}) where {T} = valuefor(T)
 valuefor(v::AbstractVector{T}) where {T<:AbstractChar} = similar(v, 0)
 valuefor(::Type{T}) where {T<:Union{Real,Ptr,Char}} = T(0)
 valuefor(::Type{T}) where {T<:AbstractString} = T("")
-valuefor(a::T) where {T<:Union{Integer,AbstractChar,AbstractFloat,AbstractString}} = a
+valuefor(a::T) where {T<:Union{Real,AbstractChar,AbstractString,Ptr}} = a
 
 # assign value to reference or vector element
 function assignto!(arg::Base.RefValue, res, j, r, i = 1)
