@@ -696,34 +696,6 @@ valuefor(::Type{T}) where {T<:Union{Real,Ptr,Char}} = T(0)
 valuefor(::Type{T}) where {T<:AbstractString} = T("")
 valuefor(a::T) where {T<:Union{Real,AbstractChar,AbstractString,Ptr}} = a
 
-# assign value to reference or vector element
-function assignto!(arg::AbstractVector{T}, res, j, r::T, i = 1) where T
-    if i > length(arg)
-        resize!(arg, i)
-    end
-    arg[i] = r
-    res[j] = arg
-end
-function assignto!(arg::AbstractVector{<:AbstractChar}, res, j, r::AbstractString, i = 1)
-    i = length(r)
-    if i > length(arg)
-        resize!(arg, i)
-    end
-    arg .= collect(r)
-    res[j] = arg
-end
-function assignto!(::Type{Char}, res, j, r, i = 1)
-    if i == 1
-        res[j] = length(r) >= 1 ? r[1] : ' '
-    end
-end
-function assignto!(::Type{T}, res, j, r, i = 1) where {T}
-    res[j] = T(r)
-end
-function assignto!(a::Any, res, j, r, i = 1)
-    res[j] = oftype(a, r)
-end
-
 # accessor functions
 assignnr(::LiteralSpec) = false, 0
 assignnr(spec::AbstractSpec) = !iszero(spec.assign), Int(spec.assign)
@@ -828,10 +800,6 @@ basespec(::Type{<:DecBases}) = 10, DECIMAL
 basespec(::Type) = nothing, DECIMAL
 
 # type conversion hints for integer specs
-outtype(::T) where {T} = outtype(T)
-outtype(::Type{<:AbstractVector{T}}) where {T} = T
-outtype(::Type{T}) where {T} = T
-
 inttype(::Type{<:Float64}) = Int64
 inttype(::Type{<:Float32}) = Int32
 inttype(::Type{<:Float16}) = Int16
