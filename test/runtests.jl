@@ -26,14 +26,15 @@ using Test, Scanf
     @testset "float to $T" for T in (Float64, Float32, Float16, BigFloat)
         f1 = Scanf.Format("%g")
         f2 = Scanf.Format("%4e")
-        @testset "$res" for res in (
-            "-13",
-            "99.76 ",
-            "-12.749123479791234797123498781234981432e-4",
-            "0x1.4711p2",
+        @testset "$res" for (inp, res) in (
+            ("-13", big"-13.0"),
+            ("99.76 ", big"99.76"),
+            ("42.11f3", big"42.11e3"),
+            ("-12.7491234797912347971e-4", big"-12.7491234797912347971e-4"),
+            ("0x1.4711p2", 0x1.4711p2)
         )
-            @test scanf(res, f1, T) == (1, parse(T, res))
-            @test scanf(res, f2, T) == (1, parse(T, res[1:min(4, length(res))]))
+            @test scanf(inp, f1, T) == (1, T(res))
+            @test scanf(inp, f2, T) == (1, parse(T, inp[1:min(4, length(inp))]))
         end
     end
 
@@ -56,6 +57,9 @@ using Test, Scanf
             @test x === res || T <: BigFloat && (x == res || isnan(x) && isnan(res))
             @test peek(io, Char) == 'X'
         end
+    end
+
+    @testset "marginal floats" begin
     end
 
     @testset "incomplete floats $inp" for inp in ("Z", "0xZ", ".Z", "e", "+e", "-e", "1eZ", "0E-Z")
@@ -187,7 +191,8 @@ using Test, Scanf
 
     # position
     @testset "%n" begin
-        @test @scanf(" 15 16  \n", " %*hhd %*Ld %n", 0) == (1, 9)
+        @test @scanf("aäc 15 16  \n", "aäc %*hhd %*Ld%n", 0) == (1, 10)
+        @test @scanf("abc", "abd%n", Int) == (0, 0)
     end
 
     # basics
@@ -271,6 +276,7 @@ using Test, Scanf
         @test redirect_stdin(f2, io) == (1, 42)
         close(io)
     end
+
     @testset "overflow $T" for T in (Float64, Float32, Float16, BigFloat)
         @testset "$T $res" for (input, res) in [
             ("+1.55e9999999999999999999", Inf),
@@ -280,9 +286,6 @@ using Test, Scanf
         ]
             @test ((r, a) = @scanf(input, "%f", oneunit(T)); r == 1) && isequal(a, T(res))
         end
-        # pointer 0x9....
-        # int and uint with overflow value
-        # float with overflow exponent
     end
     @testset "overflow $T" for T in (Int128, Int64, Int32, Int16, Int8)
         @testset "$T $input" for (input, res) in [

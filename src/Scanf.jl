@@ -24,8 +24,8 @@ const CSMINUS = UInt8('-')
 # format specifier categories
 const Ints = Union{Val{'d'},Val{'i'},Val{'u'},Val{'x'},Val{'X'},Val{'o'}}
 const Floats = Val{'f'}
-const Chars = Union{Val{'c'},Val{'C'}}
-const Strings = Union{Val{'s'},Val{'S'}}
+const Chars = Val{'c'}
+const Strings = Val{'s'}
 const Pointer = Val{'p'}
 const HexBases = Union{Val{'x'},Val{'X'},Val{'a'},Val{'A'}}
 const DecBases = Union{Val{'d'},Val{'u'}}
@@ -39,7 +39,7 @@ const EscapeChar = Val{Char(ESC)}
 const DECIMAL = b"0123456789"
 const OCTAL = b"01234567"
 const HEXADECIMAL = b"0123456789ABCDEFabcdef"
-abstract type AbstractSpec end
+abstract type AbstractSpec{T} end
 
 """
     Spec{T}
@@ -52,7 +52,7 @@ Special case `X == '_'` represents whitespace (not assigning)
 
 See also `CharsetSpec` and `LiteralSpec`.
 """
-struct Spec{T<:Val} <: AbstractSpec # T => %type => Val{'type'}
+struct Spec{T<:Val} <: AbstractSpec{T} # T => %type => Val{'type'}
     assign::ARGNUM_TYPE
     width::WIDTH_TYPE
 end
@@ -62,7 +62,7 @@ end
 
 Format specifier representing a character set (inclusive or exclusive)
 """
-struct CharsetSpec{T<:Val,S} <: AbstractSpec
+struct CharsetSpec{T<:Val,S} <: AbstractSpec{T}
     assign::ARGNUM_TYPE
     width::WIDTH_TYPE
     set::S
@@ -73,7 +73,7 @@ end
 
 Non-assigning Format specifier representing a literal matching string.
 """
-struct LiteralSpec{S} <: AbstractSpec
+struct LiteralSpec{S} <: AbstractSpec{0}
     string::S
 end
 
@@ -277,7 +277,7 @@ function Format(f::AbstractString)
     return Format(bytes, Tuple(fmts))
 end
 
-# consume bytes up to next % or whitespace and insert LiteralSpec 
+# consume characters in format string up to next % or whitespace and insert LiteralSpec 
 @inline function pushliteral!(fmts, f, bytes, pos)
     len = length(bytes)
     start = pos
@@ -310,88 +310,50 @@ end
 
 Format(f::Format) = f
 
+# extract text items from input stream
+
 # match literal strings
-@inline function fmt(io, pos, arg, res, spec::LiteralSpec)
+@inline function fmt(io, pos, spec::LiteralSpec)
     str = spec.string
     len = sizeof(str)
     ix = 1
     while ix <= len && !eof(io)
         c = str[ix]
-        peek(io, Char) != str[ix] && break
-        n = ncodeunits(c)
+        peek(io, Char) != c && break
         skip(io, ncodeunits(c))
         ix = nextind(str, ix)
     end
     l = ix - 1
-    pos + l, l == len
+    IOBuffer(), l == len, pos + l
 end
 
 # skip whitespace spec
-@inline function fmt(io, pos, arg, res, spec::Spec{Whitespace})
-    skip_ws(io, pos), true
-end
-
-# match character(s)
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Chars}
-    assign, j = assignnr(spec)
-    width = spec.width
-    width = ifelse(width == 0, 1, width)
-    eof(io) && return pos, false
-
-    if assign
-        S = outtype(arg[j])
-        v = S <: Char ? arg[j] : Char[]
-    end
-    i = 0
-    start = pos
-    while !eof(io) && i < width
-        r = peek(io, Char)
-        isvalid(Char, r) || break
-        if assign
-            i += 1
-            assignto!(v, res, j, r, i)
-        end
-        n = ncodeunits(r)
-        skip(io, n)
-        pos += n
-    end
-    if assign && v isa AbstractVector
-        resize!(v, i)
-        v != arg[j] && assignto!(S, res, j, v)
-    end
-    return pos, pos > start
+@inline function fmt(io, pos, ::Spec{Whitespace})
+    pos = skip_ws(io, pos)
+    IOBuffer(), true, pos
 end
 
 # string spec
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Strings}
+@inline function fmt(io, pos, spec::Spec{T}) where {T<:Strings}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec)
     width = spec.width
     l = 0
     out = IOBuffer()
     while (width == 0 || l < width) && !eof(io)
         c = peek(io, Char)
         (isspace(c) || !isvalid(Char, c)) && break
-        assign && write(out, c)
+        write(out, c)
         n = ncodeunits(c)
         skip(io, n)
-        pos += n
-        l += 1
+        l += n
     end
-    if assign && l > 0
-        r = String(take!(out))
-        S = outtype(arg[j])
-        x = scanf_parse(S, r)
-        assignto!(arg[j], res, j, x)
-    end
-    return pos, l > 0
+    out, l > 0, pos + l
 end
 
-# charset specs
-@inline function fmt(io, pos, arg, res, spec::CharsetSpec)
-    assign, j = assignnr(spec)
+# charset and chars specs
+@inline function fmt(io, pos, spec::S) where S<:Union{CharsetSpec,Spec{<:Chars}}
     width = spec.width
-    width = ifelse(width == 0, typemax(Int), width)
+    width = ifelse(width == 0, S<:Chars ? 1 : typemax(Int), width)
     l = 0
     out = IOBuffer()
     while l < width && !eof(io)
@@ -400,27 +362,21 @@ end
         check_set(c, spec) || break
         skip(io, n)
         write(out, c)
-        l += n
+        l += 1
+        pos += n
     end
-    if assign && l > 0
-        r = String(take!(out))
-        S = outtype(arg[j])
-        x = scanf_parse(S, r)
-        assignto!(arg[j], res, j, x)
-    end
-    pos + l, l > 0
+    out, l > 0, pos
 end
 
 # integer specs
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Ints}
+@inline function fmt(io, pos, spec::Spec{T}) where {T<:Ints}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec)
+    out = IOBuffer()
+    eof(io) && return out, false
     width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     l = 0
     sig = false
-    eof(io) && return pos, false
-    out = IOBuffer()
     b = peek(io)
     negate = false
     if b in b"+-"
@@ -436,15 +392,12 @@ end
         if b == UInt('0')
             ndig += 1
             l = writeskip(io, out, b, l)
-            if !eof(io) && peek(io) in b"xX"
+            if !eof(io) && ( b = peek(io)) in b"xX"
                 digits = HEXADECIMAL
-                base = 16
-                skip(io, 1)
-                l += 1
+                l = writeskip(io, out, b, l)
                 ndig = 0
             elseif base === nothing
                 digits = OCTAL
-                base = 8
             end
         end
     end
@@ -458,25 +411,17 @@ end
         end
     end
     succ = ndig > 0
-    if assign && succ
-        S = inttype(outtype(arg[j]))
-        r = String(take!(out))
-        x = scanf_parse(S, r, base = base)
-        assignto!(arg[j], res, j, x)
-    end
-    pos + l, succ
+    out, succ, pos + l
 end
 
 # pointer spec
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Pointer}
+@inline function fmt(io, pos, spec::Spec{T}) where {T<:Pointer}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec)
+    out = IOBuffer()
+    eof(io) && return out, false
     width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
-    rv = (pos, false)
-    eof(io) && return rv
     digits = HEXADECIMAL
-    out = IOBuffer()
     l = 0
     while l < width && !eof(io)
         b = peek(io)
@@ -491,23 +436,12 @@ end
             break
         end
     end
-    succ = l > 2
-    if assign && succ
-        r = String(take!(out))
-        S = UInt
-        s = tryparse(S, r)
-        if s === nothing
-            s = typemax(S)
-        end
-        assignto!(arg[j], res, j, s)
-    end
-    pos + l, succ
+    out, l > 2, pos + l
 end
 
 # floating point spec
-@inline function fmt(io, pos, arg, res, spec::Spec{T}) where {T<:Floats}
+@inline function fmt(io, pos, spec::Spec{T}) where {T<:Floats}
     pos = skip_ws(io, pos)
-    assign, j = assignnr(spec)
     width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     digits = DECIMAL
@@ -565,14 +499,7 @@ end
         l = writeskip(io, out, b, l)
     end
     succ = l > 0 && (status & x_mdigits != 0) && (status & x_edigits != 0)
-    if assign && succ
-        r = String(take!(out))
-        A = floattype(outtype(arg[j]))
-        A <: Integer && (A = float(A))
-        s = scanf_parse(A, r, negx = status & x_nexp != 0)
-        assignto!(arg[j], res, j, s)
-    end
-    pos + l, succ
+    out, succ, pos + l
 end
 
 # helpers for matching nan and inf
@@ -592,48 +519,71 @@ end
 end
 
 # position counter spec
-@inline function fmt(io, pos, arg, res, spec::Spec{PositionCounter})
-    assign, j = assignnr(spec)
-    if assign
-        assignto!(arg[j], res, j, pos - 1)
-    end
-    pos, true
+@inline function fmt(_, pos, ::Spec{PositionCounter})
+    IOBuffer(string(pos - 1)), true, pos
+end
+
+# convert to output type specializations
+function toout(::Type{<:Val}, out, arg::AbstractString)
+    r = String(take!(out))
+    oftype(arg, r)
+end
+
+function toout(::Type{<:Val}, out, arg::AbstractChar)
+    r = String(take!(out))
+    length(r) >= 1 ? oftype(arg, r[1]) : arg
+end
+
+function toout(::Type{<:Val}, out, arg::AbstractVector{<:AbstractChar})
+    r = String(take!(out))
+    resize!(arg, length(r))
+    arg .= collect(r)
+    arg
+end
+
+function toout(::Type{T}, out, arg::R) where {T<:Union{Ints, Val{'p'}, Val{'n'}}, R<:Union{Real,Ptr}}
+    S = inttype(typeof(arg))
+    r = String(take!(out))
+    x = scanf_parse(S, r, base = basespec(T)[1])
+    convert(R, x)
+end
+
+function toout(::Type{T}, out, arg::R) where {T<:Floats, R<:Real}
+    r = String(take!(out))
+    A = floattype(typeof(arg))
+    s = scanf_parse(A, r)
+    convert(R, s)
 end
 
 # fmt helpers
-@inline function scanf_parse(
-    ::Union{Type{<:AbstractString},Type{<:AbstractChar}},
-    r::String;
-    negx::Bool = false,
-    base = nothing,
-)
-    r
-end
-
-@inline function scanf_parse(
-    ::Type{A},
-    r::AbstractString;
-    base = nothing,
-    negx::Bool = false,
-) where {A<:AbstractFloat}
+@inline function scanf_parse(::Type{A}, r::AbstractString) where {A<:AbstractFloat}
+    if 'f' in r || 'F' in r
+        r = replace(r, r"[fF]" => 'e')
+    end
     s = tryparse(A, r)
     if s === nothing
+        expos = findfirst(x -> x in "eEfF", r)
+        negx = expos !== nothing && expos < length(r) && r[nextind(r, expos)] == '-'
         s = ifelse(negx, zero(A), typemax(A))
         r[1] == '-' && (s = -s)
     end
     s
 end
 
-@inline function scanf_parse(
-    ::Type{S},
-    r::String;
-    negx::Bool = false,
-    base = nothing,
-) where {S<:Integer}
+@inline function scanf_parse(::Type{S}, r::String; base = nothing) where {S<:Integer}
     sig = r[1] in "+-"
     negate = r[1] == '-'
+    n = length(r)
     if sig && S <: Unsigned
-        r = SubString(r, 2:length(r))
+        r = SubString(r, 2:n)
+    end
+    n -= sig
+    if n >= 1 && r[1] == '0'
+        if n >= 2 && r[2] in "xX"
+            base = nothing
+        elseif base === nothing
+            base = 8
+        end
     end
     x = tryparse(S, r, base = base)
     if x === nothing
@@ -677,6 +627,9 @@ end
     l + 1
 end
 
+itemtype(::AbstractSpec{T}) where T <: Union{Strings,CharSets} = Val{'s'}
+itemtype(::AbstractSpec{T}) where T = T
+
 # call the format specifiers aligned with the IO stream
 @inline function scanner(
     io::IO,
@@ -706,17 +659,29 @@ end
     Base.@nexprs 8 i -> begin
         if N >= i
             fi = formats[i]
-            pos, succ = fmt(io, pos, args, res, fi)
+            out, succ, pos = fmt(io, pos, fi)
             succ || @goto BREAK
-            j += assign(fi)
+            assign, argno = assignnr(fi)
+            if assign
+                r = toout(itemtype(fi), out, res[argno])
+                r === nothing && @goto BREAK
+                res[argno] = r
+                j += 1
+            end
         end
     end
     if N > UNROLL_UPTO
         for i = UNROLL_UPTO+1:N
             fi = formats[i]
-            pos, succ = fmt(io, pos, args, res, fi)
+            out, succ, pos = fmt(io, pos, fi)
             succ || break
-            j += assign(fi)
+            assign, argno = assignnr(fi)
+            if assign
+                r = toout(itemtype(fi), out, res[argno])
+                r === nothing && break
+                res[argno] = r
+                j += 1
+            end
         end
     end
     @label BREAK
@@ -726,7 +691,7 @@ end
 # utility functions
 
 # default value for types
-valuefor(v::AbstractVector{T}) where {T<:AbstractChar} = similar(v, 0)
+valuefor(v::AbstractVector{T}) where {T<:AbstractChar} = resize!(v, 0)
 valuefor(::Type{T}) where {T<:Union{Real,Ptr,Char}} = T(0)
 valuefor(::Type{T}) where {T<:AbstractString} = T("")
 valuefor(a::T) where {T<:Union{Real,AbstractChar,AbstractString,Ptr}} = a
@@ -871,11 +836,13 @@ inttype(::Type{<:Float64}) = Int64
 inttype(::Type{<:Float32}) = Int32
 inttype(::Type{<:Float16}) = Int16
 inttype(::Type{<:BigFloat}) = BigInt
+inttype(::Type{<:Ptr}) = UInt
 inttype(::Type{T}) where {T} = T
 floattype(::Type{T}) where {T<:Integer} = float(T)
 floattype(::Type{T}) where {T} = T
 
 # check if character is in or not in charset
+@inline check_set(c::Char, spec::Spec{<:Chars}) = true
 @inline check_set(c::Char, spec::CharsetSpec{Val{Char(CSOPEN)}}) = check_in(c, spec.set)
 @inline check_set(c::Char, spec::CharsetSpec{Val{Char(CSNEG)}}) = check_!in(c, spec.set)
 @inline check_in(c, set::AbstractString) = occursin(c, set)
