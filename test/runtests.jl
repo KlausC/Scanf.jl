@@ -257,7 +257,7 @@ using Test, Scanf
 
     @testset "%n" begin
         @test @scanf("1234", "%3d4%n", Int, 0) == (2, 123, 4)
-        @test @scanf("😉", "%s%n", String, 0) == (2, "😉", 4)
+        @test @scanf("😉", "%s%n", String, 0) == (2, "😉", 1)
         @test @scanf("1234 ", "%s%n", String, 0) == (2, "1234", 4)
     end
 
@@ -316,8 +316,8 @@ using Test, Scanf
     @testset "convert to different type" begin
         inp = "-1.5e+3"
         f = Scanf.format"%f"
-        @test ((r, a) = scanf(inp, f, ""); r == 1) && a == inp
-        @test ((r, a) = scanf(inp, f, Int); r == 1) && a == -1500
+        @test scanf(inp, f, "") == (1, inp)
+        @test scanf(inp, f, Int) == (1, -1500)
     end
     @testset "convert string to $T" for T in (Int, Float32)
         f = Scanf.format"%s"

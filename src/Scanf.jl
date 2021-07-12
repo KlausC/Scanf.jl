@@ -333,7 +333,7 @@ end
         write(out, c)
         n = ncodeunits(c)
         skip(io, n)
-        l += n
+        l += 1
     end
     out, l > 0, pos + l
 end
@@ -351,7 +351,7 @@ end
         skip(io, n)
         write(out, c)
         l += 1
-        pos += n
+        pos += 1
     end
     out, l > 0, pos
 end
@@ -599,7 +599,7 @@ end
             c = peek(io, Char)
             if isspace(c)
                 skip(io, n)
-                pos += n
+                pos += 1
             else
                 break
             end

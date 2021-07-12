@@ -69,18 +69,12 @@ with some adaptations:
 + for type specifier `%Nc`, with a width field `N`, the argument must have type `String` or `Vector{Char}`.
   This vector is re-used and resized to the number of characters actually read.
 
-+ the type specifier `%n`, returns an integer value, which is the byte offset in the input data, consumed by this scanf so far.
++ the type specifier `%n`, returns an integer value, which is the character offset in the input data, consumed by this scanf so far.
 
 + the type specifier `%p` requires a `Ptr` default argument.
 
 + The return value of both calls is the amount of output arguments, followed by all output data, the trailing ones maybe default values.
  In contrast to C and C++, also the arguments for `%n` are counted. 
-
-### Limitations
-
-+ the number of arguments is limited to `2^16-1`
-
-+ the `width` field in conversion specifiers is limited to `2^16 - 1`
 
 ### Implementation
 
@@ -173,7 +167,7 @@ The conversion specifiers and their meanings are:
      the `%p` conversion of the `printf`-function. The corresponding argument must be of type `Ptr`.
      a pointer to a pointer tovoid.  The  input  item  is  converted  to  a  pointer  value  in  animplementation-defined manner.  If the input item is a value converted earlierduring  the  same  program  execution,  the  pointer  that  results  shall  compareequal to that value; otherwise the behavior of the%pconversion is undefined.
      
-+ `n` No input is consumed. The corresponding argument must be an integer type, into which is converted the number of bytes read from the input
++ `n` No input is consumed. The corresponding argument must be an integer type, into which is converted the number of characters read from the input
    stream so far by this call to the `scanf` function. Execution of a `%n` directive does as well increment the assignment count returned at
    thecompletion of execution of the `scanf` function. If the conversion specification includes an assignment-suppressing character no argument 
    is consumed. An optional width field is ignored.
