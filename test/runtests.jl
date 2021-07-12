@@ -314,10 +314,17 @@ using Test, Scanf
     end
 
     @testset "convert to different type" begin
-        res = "-1.5e+3"
+        inp = "-1.5e+3"
         f = Scanf.format"%f"
-        @test ((r, a) = scanf(res, f, ""); r == 1) && a == res
-        @test ((r, a) = scanf(res, f, Int); r == 1) && a == -1500
+        @test ((r, a) = scanf(inp, f, ""); r == 1) && a == inp
+        @test ((r, a) = scanf(inp, f, Int); r == 1) && a == -1500
+    end
+    @testset "convert string to $T" for T in (Int, Float32)
+        f = Scanf.format"%s"
+        @test scanf("-1.5f+3", f, Float64) == (1, -1500.0)
+        @test scanf("-1.5f+3", f, Int) == (0, 0)
+        @test scanf("-077", f, Int) == (1, -77) # like %d
+        @test scanf("-0x77", f, Int) == (1, -119) # like %x
     end
 
 end # @testset "Scanf"
