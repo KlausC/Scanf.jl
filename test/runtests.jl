@@ -78,10 +78,16 @@ using Test, Scanf
     sigreals = (Int64, Int32, Int16, BigInt, Float64, Float32, Float16, BigFloat)
     @testset "integer %i to $T" for T in sigreals
         f1 = Scanf.Format("%i")
-        @testset "$res" for res in ("+17", "-4711", "0x7ffe")
+        @testset "$res" for res in ("+17", "-4711", "0x7ffe", "-0x7ffe")
             @test scanf(res, f1, T) == (1, parse(T, res))
         end
     end
+    @testset "integer %i octal to $T " for T in sigreals
+        @testset "$res" for (inp, res) in (("077", 63), ("-077", -63))
+            @test scanf(inp, Scanf.format"%i", T) == (1, res)
+        end
+    end
+
     @testset "incomplete integers $inp" for inp in ("Z", "0xZ", )
         io = IOBuffer(inp)
         @test ( @scanf io "%i" 0 ) == (0, 0)
@@ -258,12 +264,14 @@ using Test, Scanf
     @testset "show specifiers" begin
         f = Scanf.format"%dABC%[a-cA-C]%[^]a-cx] %[]B-Aa-zC-]%[B-A]"
         @test sprint(show, f.formats) ==
-              "(%d, \"ABC\", %[a-cA-C], %[^]xa-c], %*_, %[]Ca-z-], %[1-0])"
+            "(%d, \"ABC\", %[a-cA-C], %[^]xa-c], %*_, %[]Ca-z-], %[1-0])"
+        @test sprint(show, f) ==
+            "Scanf.format\"%dABC%[a-cA-C]%[^]a-cx] %[]B-Aa-zC-]%[B-A]\""
     end
 
     @testset "scanf from stdin" begin
-        f1() = scanf(Scanf.format"abc%i", 0)
-        f2() = @scanf "abc%i" 0
+        f1 = () -> scanf(Scanf.format"abc%i", 0)
+        f2 = () -> @scanf "abc%i" 0
 
         file = tempname(cleanup = true)
         write(file, "abc42")
@@ -288,27 +296,21 @@ using Test, Scanf
         end
     end
     @testset "overflow $T" for T in (Int128, Int64, Int32, Int16, Int8)
-        @testset "$T $input" for (input, res) in [
-            ("270141183460469231731687303715884105727", typemax(T)),
-            ("-270141183460469231731687303715884105727", typemin(T)),
-        ]
-            @test ((r, a) = @scanf(input, "%d", T); r == 1) && isequal(a, T(res))
+        str = "270141183460469231731687303715884105727"
+        @testset "$T $input" for input in [str, "-" * str]
+            @test @scanf(input, "%d", T) == (0, 0)
         end
-        # pointer 0x9....
     end
     @testset "overflow $T" for T in (UInt128, UInt64, UInt32, UInt16, UInt8)
-        @testset "$T $input" for (input, res) in [
-            ("470141183460469231731687303715884105727", typemax(T)),
-            ("-470141183460469231731687303715884105727", typemax(T)),
-        ]
-            @test ((r, a) = @scanf(input, "%d", T); r == 1) && isequal(a, T(res))
+        str = "470141183460469231731687303715884105727"
+        @testset "$T $input" for input in [str, "-" * str]
+            @test @scanf(input, "%d", T) == (0, 0)
         end
     end
     @testset "overflow Ptr" begin
         T = Ptr{String}
         input = "0x12341234abcdabcd0"
-        res = T(typemax(UInt))
-        @test ((r, a) = @scanf(input, "%p", T); r == 1) && isequal(a, T(res))
+        @test @scanf(input, "%p", T) == (0, T(0))
     end
 
     @testset "convert to different type" begin
