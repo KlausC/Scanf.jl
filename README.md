@@ -164,14 +164,14 @@ The conversion specifiers and their meanings are:
     the range is the integer range of unicode codepoints of the characters. Empty ranges (like `b-a`) are ignored.
 
 + `p` Matches an set of sequences, which are the same as the set of sequences that may be produced by
-     the `%p` conversion of the `printf`-function. The corresponding argument must be of type `Ptr`.
-     a pointer to a pointer tovoid.  The  input  item  is  converted  to  a  pointer  value  in  animplementation-defined manner.  If the input item is a value converted earlierduring  the  same  program  execution,  the  pointer  that  results  shall  compareequal to that value; otherwise the behavior of the%pconversion is undefined.
-     
+     the `%p` conversion of the `printf`-function. The corresponding argument must be of type `Ptr{T}` where T may be any type.
+     The  input  item  is  converted  to  a  pointer  value  in  animplementation-defined manner.  If the input item is a value converted earlierduring  the  same  program  execution,  the  pointer  that  results  shall  compare equal to that value; otherwise the behavior of the `%p` conversion is undefined.
+
 + `n` No input is consumed. The corresponding argument must be an integer type, into which is converted the number of characters read from the input
    stream so far by this call to the `scanf` function. Execution of a `%n` directive does as well increment the assignment count returned at
-   thecompletion of execution of the `scanf` function. If the conversion specification includes an assignment-suppressing character no argument 
+   the completion of execution of the `scanf` function. If the conversion specification includes an assignment-suppressing character no argument
    is consumed. An optional width field is ignored.
-   
+
 + `%` Matches a single `'%'` character; no conversion or assignment occurs. The complete conversion specification is `%%`.
    (with other words, `%%` is treated like a single ordinary character `%`).
 

@@ -360,7 +360,7 @@ end
 @inline function fmt(io, pos, spec::Spec{T}) where {T<:Ints}
     pos = skip_ws(io, pos)
     out = IOBuffer()
-    eof(io) && return out, false
+    eof(io) && return out, false, pos
     width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     l = 0
@@ -406,7 +406,7 @@ end
 @inline function fmt(io, pos, spec::Spec{T}) where {T<:Pointer}
     pos = skip_ws(io, pos)
     out = IOBuffer()
-    eof(io) && return out, false
+    eof(io) && return out, false, pos
     width = spec.width
     width = ifelse(width == 0, typemax(Int), width)
     digits = HEXADECIMAL
@@ -669,6 +669,7 @@ end
 
 # default value for types
 valuefor(v::AbstractVector{T}) where {T<:AbstractChar} = resize!(v, 0)
+valuefor(::Type{Ptr}) = Ptr{Nothing}(0)
 valuefor(::Type{T}) where {T<:Union{Real,Ptr,Char}} = T(0)
 valuefor(::Type{T}) where {T<:AbstractString} = T("")
 valuefor(a::T) where {T<:Union{Real,AbstractChar,AbstractString,Ptr}} = a

@@ -327,4 +327,11 @@ using Test, Scanf
         @test scanf("-0x77", f, Int) == (1, -119) # like %x
     end
 
+    @testset "issue #8" begin
+        f = Scanf.format"%2i%2i"
+        @test scanf("7", f, Int, -777) == (1, 7, -777)
+        f = Scanf.format"%2i%2p"
+        @test scanf("7", f, Int, Ptr) == (1, 7, Ptr{Nothing}(0))
+    end
+
 end # @testset "Scanf"
