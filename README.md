@@ -24,14 +24,15 @@ julia> r, y, m, d, H, M, S, ms = scanf("2021.07.04T15:53", f, Int, zeros(Int8, 5
 (5, 2021, 7, 4, 15, 53, 0, 0)
 
 ```
+
 ## Features
 
-Scanf provides the macro `r, a,... = @scanf([io, ] "%format", args...)`
+`Scanf` provides the macro `r, a,... = @scanf([io, ] "format_string", args...)`
 and the function `r, a,... = scanf(io, f::Scanf.Format, args...)`.
 
 The format string must be a string literal, which is evaluated once at macro expansion time.
 
-Alternatively `f = Scanf.format"%format_string"` or `f = Scanf.Format("format_string")` create a format object, which can be
+Alternatively `f = Scanf.format"format_string"` or `f = Scanf.Format(::AbstractString)` create a format object, which can be
 used in the function call.
 
 The arguments are default values of types `Real`, `AbstractChar`, `AbstractString`, `Ptr`, `AbstractVector{Char}`.
@@ -56,7 +57,7 @@ with some adaptations:
 
 + All unicode characters are supported in format strings and input data.
 
-+ in format strings, whitespace specifiers are only the ASCII space characters " \n\r\t\f\v".
++ in format strings, whitespace specifiers are only the ASCII space characters in `" \n\r\t\f\v"`.
 
 + in input data, all characters `x` with `isspace(x) == true` are skipped by any whitespace specifier in the format string.
 
@@ -74,11 +75,11 @@ with some adaptations:
 + the type specifier `%p` requires a `Ptr` default argument.
 
 + The return value of both calls is the amount of output arguments, followed by all output data, the trailing ones maybe default values.
- In contrast to C and C++, also the arguments for `%n` are counted. 
+ In contrast to C and C++, also the arguments for `%n` are counted.
 
 ### Implementation
 
-If the input stream is exhausted before a character is read, the EOF-indicator `-1` is returned.
+If the input stream is exhausted before a character is read, the EOF-indicator `-1` is returned in place of the number of assigned values.
 
 For format specifiers "Whitespace", any number of characters (also zero) `x` with `isspace(x) == true` are consumed from the input stream.
 
@@ -87,7 +88,7 @@ otherwise the process fails.
 
 If format specifier "Character" `%c` is processed, at least one character is read and assigned to the output argument. If no character is available, the process fails.
 
-If format specifier `%n` is processed, not data are consumed (and no EOF returned), but the current read position is returned.
+If format specifier `%n` is processed, no data are consumed (and no EOF returned), but the current read position is returned.
 
 ## Description
 
@@ -106,19 +107,19 @@ The format is composed of zero or more directives: one or more (ASCII) white-spa
 + An optional length modifier that is not used by this implementation.
 + A conversion specifier character that specifies the type of conversion to be applied.
 
-The `scanf` function executes each directive of the format in turn. When all directiveshave been executed, or if a directive fails (as
+The `scanf` function executes each directive of the format in turn. When all directives have been executed, or if a directive fails (as
 detailed  below), the function returns. Failures are described as input failures (due to the occurrence of an encoding error or the unavailability of input characters), or matching failures (due to inappropriate input).
 
-A directive composed of white-space wide character(s) is executed by reading input up to the first non-white-space wide character (which
+A directive composed of white-space character(s) is executed by reading input up to the first non-white-space character (which
 remains unread), or until no more characters can be read. The directive never fails.
 
-A directive that is an ordinary character is executed by reading the next character of the stream. If that wide character differs from the  directive, the directive fails and the differing and subsequent characters remain unread. Similarly, if end-of-file, an encoding error, or a read error prevents a character from being read, the directive fails.
+A directive that is an ordinary character is executed by reading the next character of the stream. If that character differs from the  directive, the directive fails and the differing and subsequent characters remain unread. Similarly, if end-of-file, an encoding error, or a read error prevents a character from being read, the directive fails.
 
 A directive that is a conversion specification defines a set of matching input sequences, as described below for each specifier. A conversion
 specification is executed in the following steps:
 
-Input white-space wide characters (as specified by thei `isspace` function) are skipped, unless the specification includes a `'['`, `'c'`,
-or `'n'` specifier. These white-space wide characters are not counted against a specified field width.
+Input white-space characters (as specified by the `isspace` function) are skipped, unless the specification includes a `'['`, `'c'`,
+or `'n'` specifier. These white-space characters are not counted against a specified field width.
 
 An input item is read from the stream, unless the specification includes an `'n'` specifier.  An input item is defined as the longest sequence
 of input characters which does not exceed any specified field width and which is, or is a prefix of, a matching input sequence.
@@ -128,7 +129,7 @@ fails; this condition is a matching failure unless end-of-file, an encoding erro
 case it is an input failure.
 
 Except in the case of a `'%'` specifier, the input item (or, in the case of a `'%n'` directive, the count of input characters) is converted
-to a type appropriate to the conversion specifier and corresponding argument. If the input item is not a matching sequence, the execution of the 
+to a type appropriate to the conversion specifier and corresponding argument. If the input item is not a matching sequence, the execution of the
 directive fails: this condition is a matching failure. Unless assignment suppression was indicated by a `*`, the result of the conversion
 is  pushed to the ouput tuple.
 
@@ -165,7 +166,7 @@ The conversion specifiers and their meanings are:
 
 + `p` Matches an set of sequences, which are the same as the set of sequences that may be produced by
      the `%p` conversion of the `printf`-function. The corresponding argument must be of type `Ptr{T}` where T may be any type.
-     The  input  item  is  converted  to  a  pointer  value  in  animplementation-defined manner.  If the input item is a value converted earlierduring  the  same  program  execution,  the  pointer  that  results  shall  compare equal to that value; otherwise the behavior of the `%p` conversion is undefined.
+     The  input  item  is  converted  to  a  pointer  value  in  an implementation-defined manner.  If the input item is a value converted earlier during  the  same  program  execution,  the  pointer  that  results  shall  compare equal to that value; otherwise the behavior of the `%p` conversion is undefined.
 
 + `n` No input is consumed. The corresponding argument must be an integer type, into which is converted the number of characters read from the input
    stream so far by this call to the `scanf` function. Execution of a `%n` directive does as well increment the assignment count returned at
@@ -175,10 +176,9 @@ The conversion specifiers and their meanings are:
 + `%` Matches a single `'%'` character; no conversion or assignment occurs. The complete conversion specification is `%%`.
    (with other words, `%%` is treated like a single ordinary character `%`).
 
-If a conversion specification is invalid, the behavior is undefined.339)
+If a conversion specification is invalid, the behavior is undefined.
 
 The conversion specifiers `A`,`E`,`F`,`G`, and `X` are also valid and behave the same as, respectively, `a`,`e`,`f`,`g`, and `x`.
 
 Trailing white space (including new-line characters) is left unread unless matched by a directive. The success of literal matches and
 suppressed assignments is not directly determinable other than via the `%n` directive.
-
