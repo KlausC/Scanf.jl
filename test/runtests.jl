@@ -334,4 +334,11 @@ using Test, Scanf
         @test scanf("7", f, Int, Ptr) == (1, 7, Ptr{Nothing}(0))
     end
 
+    @testset "issue #9" begin
+        f = Scanf.format"%c"
+        @test scanf("äbcd", f, '1') == (1, 'ä')
+        @test scanf("äbcd", f, "123") == (1, "ä")
+        @test scanf("äbcd", f, ['1']) == (1, ['ä'])
+    end
+
 end # @testset "Scanf"
