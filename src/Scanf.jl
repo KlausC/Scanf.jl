@@ -341,7 +341,7 @@ end
 # charset and chars specs
 @inline function fmt(io, pos, spec::S) where {S<:Union{CharsetSpec,Spec{<:Chars}}}
     width = spec.width
-    width = ifelse(width == 0, S <: Chars ? 1 : typemax(Int), width)
+    width = ifelse(width == 0, S <: Spec{<:Chars} ? 1 : typemax(Int), width)
     l = 0
     out = IOBuffer()
     while l < width && !eof(io)
