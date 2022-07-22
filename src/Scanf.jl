@@ -434,17 +434,18 @@ end
     width = ifelse(width == 0, typemax(Int), width)
     digits = DECIMAL
     expch = b"eEfF"
-    x_sign = 0x01
-    x_sep = 0x02
-    x_exp = 0x04
-    x_base = 0x08
-    x_inexp = 0x10
-    x_nexp = 0x20
-    x_mdigits = 0x40
-    x_edigits = 0x80
+    x_sign = 0x001
+    x_sep = 0x002
+    x_exp = 0x004
+    x_base = 0x008
+    x_inexp = 0x010
+    x_nexp = 0x020
+    x_mdigits = 0x040
+    x_edigits = 0x080
+    x_infnan = 0x100
     l = 0
     out = IOBuffer()
-    status = x_sign | x_sep | x_base | x_edigits
+    status = x_sign | x_sep | x_base | x_edigits | x_infnan
     while l < width && !eof(io)
         b = peek(io)
         if status & x_base != 0 && b == UInt8('0')
@@ -456,10 +457,10 @@ end
             else
                 status |= x_mdigits
             end
-            status = (status | x_exp | x_edigits) & ~(x_base | x_sign)
+            status = (status | x_exp | x_edigits) & ~(x_base | x_sign | x_infnan)
             continue
         elseif b in digits
-            status = (status | x_exp) & ~(x_base | x_sign)
+            status = (status | x_exp) & ~(x_base | x_sign | x_infnan)
             status |= (status & x_inexp != 0) ? x_edigits : x_mdigits
         elseif b == UInt8('-') && (status & x_sign) != 0
             status |= ifelse(status & x_base == 0, x_nexp, 0)
@@ -467,16 +468,16 @@ end
         elseif b == UInt8('+') && (status & x_sign) != 0
             status = status & ~x_sign
         elseif b == UInt8('.') && (status & x_sep) != 0
-            status = status & ~(x_base | x_sign | x_sep)
+            status = status & ~(x_base | x_sign | x_sep | x_infnan)
         elseif b in expch && (status & x_exp) != 0
             status = (status & ~(x_base | x_exp | x_edigits | x_sep)) | x_sign | x_inexp
             digits = DECIMAL
-        elseif b in b"iI"
+        elseif b in b"iI" && (status & x_infnan ) != 0
             n = expect(io, out, b"INFINITY", 3)
             l = (n == 3 || n == 8) ? l + n : 0
             status |= x_mdigits | x_edigits
             break
-        elseif b in b"nN"
+        elseif b in b"nN" && (status & x_infnan ) != 0
             n = expect(io, out, b"NAN", 3)
             l = n == 3 ? l + n : 0
             status |= x_mdigits | x_edigits
@@ -492,18 +493,37 @@ end
 
 # helpers for matching nan and inf
 @inline function expect(io::IO, out::IO, bytes::AbstractVector{UInt8}, n)
-    l = 1
-    while l <= length(bytes) && !eof(io)
-        b = peek(io)
-        if b == bytes[l] || b == bytes[l] + (UInt8('a') - UInt8('A'))
-            l <= n && write(out, b)
-            skip(io, 1)
-            l += 1
+    mark(io)
+    m = length(bytes)
+    rbytes = read(io, n)
+    if !isequiv(rbytes, bytes, n)
+        reset(io)
+        return 0
+    end
+    write(out, rbytes)
+    if n < m
+        mark(io)
+        xbytes = read(io, m - n)
+        append!(rbytes, xbytes)
+        if isequiv(rbytes, bytes, m)
+            unmark(io)
+            return m
         else
-            break
+            reset(io)
+            return n
         end
     end
-    return l - 1
+    return n
+end
+
+@inline function isequiv(rbytes, bytes, n)
+    length(rbytes) >= n || return false
+    for i = 1:n
+        if !( rbytes[i] == bytes[i] || rbytes[i] == bytes[i] + (UInt8('a') - UInt8('A')) )
+            return false
+        end
+    end
+    return true
 end
 
 # position counter spec

@@ -41,21 +41,21 @@ using Test, Scanf
     # floating point nan and infinity
     @testset "float to $T" for T in (Float64, Float32, Float16, BigFloat)
         f = Scanf.format"%f%n"
-        @testset "$inp" for (inp, res, rr, nn) in (
-            ("InfX", T(Inf), 2, 3),
-            ("-InFX", T(-Inf), 2, 4),
-            ("infiNITYX", T(Inf), 2, 8),
-            ("NANX", T(NaN), 2, 3),
-            ("-nanX", T(-NaN), 2, 4),
-            ("infiX", T(0.0), 0, 0),
-            ("naX", T(0.0), 0, 0),
+        @testset "$inp" for (inp, res, rr, nn, nc) in (
+            ("InfX", T(Inf), 2, 3, "X"),
+            ("-InFX", T(-Inf), 2, 4, "X"),
+            ("infiNITYX", T(Inf), 2, 8, "X"),
+            ("NANX", T(NaN), 2, 3, "X"),
+            ("-nanX", T(-NaN), 2, 4, "X"),
+            ("infiX", T(Inf), 2, 3, "iX"),
+            ("naX", T(0.0), 0, 0, "naX"),
         )
             io = IOBuffer(inp)
             r, x, n = scanf(io, f, T(0.0), 0)
             @test r == rr
             @test n == nn
             @test x === res || T <: BigFloat && (x == res || isnan(x) && isnan(res))
-            @test peek(io, Char) == 'X'
+            @test peek(io, String) == nc
         end
     end
 
@@ -339,6 +339,12 @@ using Test, Scanf
         @test scanf("äbcd", f, '1') == (1, 'ä')
         @test scanf("äbcd", f, "123") == (1, "ä")
         @test scanf("äbcd", f, ['1']) == (1, ['ä'])
+    end
+
+    @testset "issue #11" begin
+        f = Scanf.format"%f%fi%n"
+        @test scanf("1.5-2.1i", f, 0.0, 0.0, 0) == (3, 1.5, -2.1, 8)
+        @test isequal(scanf("-NaN -Infi", f, 0.0, 0.0, 0), (3, NaN, -Inf, 10))
     end
 
 end # @testset "Scanf"
