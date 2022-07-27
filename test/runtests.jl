@@ -59,12 +59,11 @@ using Test, Scanf
         end
     end
 
-    @testset "marginal floats" begin
-    end
+    @testset "marginal floats" begin end
 
     @testset "incomplete floats $inp" for inp in ("Z", "0xZ", ".Z", "e", "+e", "-e", "1eZ", "0E-Z")
         io = IOBuffer(inp)
-        @test ( @scanf io "%f" 0.0 ) == (0, 0.0)
+        @test (@scanf io "%f" 0.0) == (0, 0.0)
         @test peek(io, Char) == inp[end]
     end
 
@@ -88,14 +87,14 @@ using Test, Scanf
         end
     end
 
-    @testset "incomplete integers $inp" for inp in ("Z", "0xZ", )
+    @testset "incomplete integers $inp" for inp in ("Z", "0xZ",)
         io = IOBuffer(inp)
-        @test ( @scanf io "%i" 0 ) == (0, 0)
+        @test (@scanf io "%i" 0) == (0, 0)
         @test peek(io) == UInt8('Z')
     end
     @testset "incomplete pointers $inp $arg" for inp in ("Z", "0Z", "0XZ"), arg in (Ptr{String}, Ptr{String}(0))
         io = IOBuffer(inp)
-        @test ( @scanf io "%p" arg) == (0, Ptr{String}(0))
+        @test (@scanf io "%p" arg) == (0, Ptr{String}(0))
         @test peek(io) == UInt8('Z')
     end
 
@@ -109,7 +108,7 @@ using Test, Scanf
     @testset "integer %o to $T" for T in (Int64, UInt64, Int32, UInt32, Int16, UInt16)
         f1 = Scanf.Format("%o")
         @testset "$res" for res in ("17", "4711", "0377")
-            @test scanf(res, f1, T) == (1, parse(T, res, base = 8))
+            @test scanf(res, f1, T) == (1, parse(T, res, base=8))
         end
     end
 
@@ -264,16 +263,16 @@ using Test, Scanf
     @testset "show specifiers" begin
         f = Scanf.format"%dABC%[a-cA-C]%[^]a-cx] %[]B-Aa-zC-]%[B-A]"
         @test sprint(show, f.formats) ==
-            "(%d, \"ABC\", %[a-cA-C], %[^]xa-c], %*_, %[]Ca-z-], %[1-0])"
+              "(%d, \"ABC\", %[a-cA-C], %[^]xa-c], %*_, %[]Ca-z-], %[1-0])"
         @test sprint(show, f) ==
-            "Scanf.format\"%dABC%[a-cA-C]%[^]a-cx] %[]B-Aa-zC-]%[B-A]\""
+              "Scanf.format\"%dABC%[a-cA-C]%[^]a-cx] %[]B-Aa-zC-]%[B-A]\""
     end
 
     @testset "scanf from stdin" begin
         f1 = () -> scanf(Scanf.format"abc%i", 0)
         f2 = () -> @scanf "abc%i" 0
 
-        file = tempname(cleanup = true)
+        file = tempname(cleanup=true)
         write(file, "abc42")
 
         io = open(file)

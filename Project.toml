@@ -3,8 +3,12 @@ uuid = "6ef1bc8b-493b-44e1-8d40-549aa65c4b41"
 authors = ["KlausC <klausC@users.noreply.github.com> and contributors"]
 version = "0.5.3"
 
+[deps]
+BufferedStreams = "e1450e63-4bb3-523b-b2a4-4ffa8c0fd77d"
+
 [compat]
 julia = "1.5"
+BufferedStreams = "1"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

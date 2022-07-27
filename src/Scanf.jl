@@ -1,6 +1,6 @@
 module Scanf
 
-using Base.Ryu
+using BufferedStreams
 
 export @scanf, @sscanf, scanf
 
@@ -77,7 +77,7 @@ struct LiteralSpec{S} <: AbstractSpec{0}
     string::S
 end
 
-# replace double %% by single % 
+# replace double %% by single %
 function LiteralSpec(str::T) where {T<:AbstractString}
     if contains(str, "%%")
         str = replace(str, "%%" => "%")
@@ -124,13 +124,14 @@ Return the number of assigned arguments, followed by the assigned output data.
 function scanf end
 
 scanf(io::IO, f::Format, args...) = scanner(io, f, args...)
+scanf(io::Base.TTY, f::Format, args...) = scanf(BufferedInputStream(io), f, args...)
 scanf(f::Format, args...) = scanf(stdin, f, args...)
 scanf(str::AbstractString, f::Format, args...) = scanf(IOBuffer(str), f, args...)
 
 """
     @scanf([io:Union{IO,String}, ], "%Fmt", args::...)
 
-Scan input stream or string of using C `scanf` style format specification string and assign values 
+Scan input stream or string of using C `scanf` style format specification string and assign values
 to arguments.
 
 The format string (not a variable) is analyzed at macro expansion time.
@@ -265,7 +266,7 @@ function Format(f::AbstractString)
     return Format(bytes, Tuple(fmts))
 end
 
-# consume characters in format string up to next % or whitespace and insert LiteralSpec 
+# consume characters in format string up to next % or whitespace and insert LiteralSpec
 @inline function pushliteral!(fmts, f, bytes, pos)
     len = length(bytes)
     start = pos
@@ -653,7 +654,7 @@ itemtype(::AbstractSpec{T}) where {T} = T
     N = length(formats)
     j = 0
     UNROLL_UPTO = 8
-    Base.@nexprs 8 i -> 
+    Base.@nexprs 8 i ->
     begin if N >= i
             fi = formats[i]
             out, succ, pos = fmt(io, pos, fi)
