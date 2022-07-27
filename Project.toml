@@ -1,7 +1,7 @@
 name = "Scanf"
 uuid = "6ef1bc8b-493b-44e1-8d40-549aa65c4b41"
 authors = ["KlausC <klausC@users.noreply.github.com> and contributors"]
-version = "0.5.3"
+version = "0.5.4"
 
 [deps]
 BufferedStreams = "e1450e63-4bb3-523b-b2a4-4ffa8c0fd77d"
