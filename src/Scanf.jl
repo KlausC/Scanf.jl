@@ -245,7 +245,7 @@ function Format(f::AbstractString)
                 if (xpos === nothing || start >= xpos)
                     throwi("\"$f\", after '$txt]' a Char(CSCLOSE) is missing")
                 end
-                charset = view(bytes, start:xpos-1)
+                charset = view(bytes, start:(xpos-1))
                 pos = xpos + 1
                 type = Val{Char(b)}
             else
@@ -473,12 +473,12 @@ end
         elseif b in expch && (status & x_exp) != 0
             status = (status & ~(x_base | x_exp | x_edigits | x_sep)) | x_sign | x_inexp
             digits = DECIMAL
-        elseif b in b"iI" && (status & x_infnan ) != 0
+        elseif b in b"iI" && (status & x_infnan) != 0
             n = expect(io, out, b"INFINITY", 3)
             l = (n == 3 || n == 8) ? l + n : 0
             status |= x_mdigits | x_edigits
             break
-        elseif b in b"nN" && (status & x_infnan ) != 0
+        elseif b in b"nN" && (status & x_infnan) != 0
             n = expect(io, out, b"NAN", 3)
             l = n == 3 ? l + n : 0
             status |= x_mdigits | x_edigits
@@ -520,7 +520,7 @@ end
 @inline function isequiv(rbytes, bytes, n)
     length(rbytes) >= n || return false
     for i = 1:n
-        if !( rbytes[i] == bytes[i] || rbytes[i] == bytes[i] + (UInt8('a') - UInt8('A')) )
+        if !(rbytes[i] == bytes[i] || rbytes[i] == bytes[i] + (UInt8('a') - UInt8('A')))
             return false
         end
     end
@@ -550,10 +550,11 @@ function toout(::Type{<:Val}, out, arg::AbstractVector{<:AbstractChar})
     arg
 end
 
-function toout(::Type{T}, out, arg::R) where {T<:Union{Ints,Val{'p'},Val{'n'}},R<:Union{Real,Ptr}}
+const IntsAndPointers = Union{Ints,Val{'p'},Val{'n'}}
+function toout(::Type{T}, out, arg::R) where {T<:IntsAndPointers,R<:Union{Real,Ptr}}
     S = inttype(typeof(arg))
     r = String(take!(out))
-    x = xparse(S, r, base = basespec(T)[1])
+    x = xparse(S, r; base = basespec(T)[1])
     x !== nothing ? convert(R, x) : nothing
 end
 
@@ -566,13 +567,13 @@ end
 
 function toout(::Type{<:Strings}, out, arg::R) where R<:Real
     r = String(take!(out))
-    xparse(R, r, base = R <: Integer ? 10 : nothing)
+    xparse(R, r; base = R <: Integer ? 10 : nothing)
 end
 
 # fmt helpers
 
 # try parse float - assume input string is syntaxtically correct
-@inline function xparse(::Type{A}, r::AbstractString; base = nothing) where {A<:AbstractFloat}
+@inline function xparse(::Type{A}, r::AbstractString; base = nothing) where A<:AbstractFloat
     if 'f' in r || 'F' in r
         r = replace(r, r"[fF]" => 'e')
     end
@@ -592,13 +593,13 @@ end
     negate = r[1] == '-'
     n = length(r)
     if n >= 1 && r[1+sig] == '0'
-        base = n >= 2+sig && r[2+sig] in "xX" ? nothing : base === nothing ? 8 : base
+        base = n >= 2 + sig && r[2+sig] in "xX" ? nothing : base === nothing ? 8 : base
     end
     if sig && S <: Unsigned
         r = SubString(r, 2:n)
     end
-    x = tryparse(S, r, base = base)
-    if x !== nothing &&  negate && S <: Unsigned
+    x = tryparse(S, r; base = base)
+    if x !== nothing && negate && S <: Unsigned
         x = -x
     end
     x
@@ -654,8 +655,8 @@ itemtype(::AbstractSpec{T}) where {T} = T
     N = length(formats)
     j = 0
     UNROLL_UPTO = 8
-    Base.@nexprs 8 i ->
-    begin if N >= i
+    Base.@nexprs 8 i -> begin
+        if N >= i
             fi = formats[i]
             out, succ, pos = fmt(io, pos, fi)
             succ || @goto BREAK
@@ -669,7 +670,7 @@ itemtype(::AbstractSpec{T}) where {T} = T
         end
     end
     if N > UNROLL_UPTO
-        for i = UNROLL_UPTO+1:N
+        for i = (UNROLL_UPTO+1):N
             fi = formats[i]
             out, succ, pos = fmt(io, pos, fi)
             succ || break
@@ -705,7 +706,8 @@ assign(spec::AbstractSpec) = assignnr(spec)[1]
 # recreate the format specifier string from a typed Spec
 Base.string(f::Spec{Val{T}}) where {T} = string(string_header(f), T)
 function Base.string(f::CharsetSpec{T}) where T<:CharSets
-    string(string_header(f),
+    string(
+        string_header(f),
         Char(CSOPEN),
         T <: Val{Char(CSNEG)} ? Char(CSNEG) : "",
         showset(f.set),
