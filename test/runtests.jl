@@ -232,7 +232,8 @@ using Test, Scanf
         @test_throws ArgumentError scanf("", f)
 
         toobig_argnum = (Int64(typemax(Scanf.ARGNUM_TYPE)) + 1)
-        @test Scanf.Format("%d"^(toobig_argnum - 1)) isa Scanf.Format
+        acceptable = min(toobig_argnum-1, 100000)
+        @test Scanf.Format("%d"^acceptable) isa Scanf.Format
         @test_throws ArgumentError Scanf.Format("%d"^toobig_argnum)
 
         toobig_width = (Int64(typemax(Scanf.WIDTH_TYPE)) + 1)

@@ -5,7 +5,7 @@ using BufferedStreams
 export @scanf, @sscanf, scanf
 
 const EOF = -1
-const ARGNUM_TYPE = UInt16
+const ARGNUM_TYPE = UInt32
 const WIDTH_TYPE = UInt32
 # whitespace characters in format strings
 const WHITESPACE = b" \n\t\r\f\v"
